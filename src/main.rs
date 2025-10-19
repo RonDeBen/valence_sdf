@@ -1,13 +1,17 @@
 use bevy::prelude::*;
 
 mod camera;
+mod game;
 mod graph;
 mod input;
 mod sdf_material;
+mod visual;
 
 use camera::CameraPlugin;
 use input::InputPlugin;
 use sdf_material::SdfMaterialPlugin;
+
+use crate::visual::graph::GraphPlugin;
 
 fn main() {
     App::new()
@@ -15,6 +19,7 @@ fn main() {
         .add_plugins(CameraPlugin)
         .add_plugins(InputPlugin)
         .add_plugins(SdfMaterialPlugin)
+        .add_plugins(GraphPlugin)
         .add_systems(Startup, setup_lighting)
         // .add_systems(Startup, spawn_sdf_screen)  // Temporarily disabled to see grid
         .run();
