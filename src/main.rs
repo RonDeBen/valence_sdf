@@ -6,7 +6,6 @@ mod input;
 mod sdf_material;
 
 use camera::CameraPlugin;
-use graph::GraphPlugin;
 use input::InputPlugin;
 use sdf_material::SdfMaterialPlugin;
 
@@ -16,7 +15,6 @@ fn main() {
         .add_plugins(CameraPlugin)
         .add_plugins(InputPlugin)
         .add_plugins(SdfMaterialPlugin)
-        .add_plugins(GraphPlugin)
         .add_systems(Startup, setup_lighting)
         // .add_systems(Startup, spawn_sdf_screen)  // Temporarily disabled to see grid
         .run();
