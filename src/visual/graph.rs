@@ -14,6 +14,7 @@ pub struct GraphPlugin;
 impl Plugin for GraphPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DragState>()
+            .init_resource::<HoverState>()
             .add_systems(Startup, (setup_puzzle, setup_scene).chain())
             .add_systems(
                 Update,
@@ -26,9 +27,11 @@ impl Plugin for GraphPlugin {
                     apply_edge_spring_forces,
                     apply_node_repulsion,
                     simulate_node_physics,
+                    node_hover_flee,      // NEW: Make hovered node flee
                     // Visual updates
                     update_node_visuals,
-                    update_sdf_scene, // NEW: Update the unified scene
+                    update_sdf_scene,     // Update the unified scene
+                    snap_on_reset,        // NEW: Snap back on reset
                     // Debug
                     debug_physics,
                 )
@@ -47,6 +50,13 @@ pub struct GraphNode {
 #[derive(Resource, Default)]
 struct DragState {
     is_dragging: bool,
+}
+
+/// Resource to track which node the mouse is hovering over
+#[derive(Resource, Default)]
+struct HoverState {
+    hovered_node: Option<NodeId>,
+    cursor_world_pos: Option<Vec3>,
 }
 
 /// Setup the puzzle session
@@ -274,6 +284,7 @@ fn handle_pointer_input(
     nodes_query: Query<(&GraphNode, &NodePhysics)>,
     mut session: ResMut<PuzzleSession>,
     mut drag_state: ResMut<DragState>,
+    mut hover_state: ResMut<HoverState>,
 ) {
     let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
@@ -283,6 +294,18 @@ fn handle_pointer_input(
         let Some(world_pos) = event.to_world_position(camera, camera_transform) else {
             continue;
         };
+
+        // Update hover state (which node is closest to cursor)
+        hover_state.cursor_world_pos = Some(world_pos);
+        hover_state.hovered_node = nodes_query
+            .iter()
+            .min_by(|(_, physics_a), (_, physics_b)| {
+                let dist_a = world_pos.distance(physics_a.position);
+                let dist_b = world_pos.distance(physics_b.position);
+                dist_a.partial_cmp(&dist_b).unwrap()
+            })
+            .filter(|(_, physics)| world_pos.distance(physics.position) < 1.0) // Only hover if within range
+            .map(|(node, _)| node.node_id);
 
         match event.event_type {
             PointerEventType::Down => {
@@ -462,5 +485,82 @@ fn debug_pointer(
             let isometry = Isometry3d::new(world_pos, rotation);
             gizmos.circle(isometry, 0.3, color);
         }
+    }
+}
+
+/// Make invalid nodes flee from cursor when approached
+fn node_hover_flee(
+    hover_state: Res<HoverState>,
+    drag_state: Res<DragState>,
+    session: Res<PuzzleSession>,
+    mut nodes: Query<(&GraphNode, &mut NodePhysics)>,
+) {
+    // Only apply when not dragging
+    if drag_state.is_dragging {
+        return;
+    }
+
+    let Some(cursor_pos) = hover_state.cursor_world_pos else {
+        return;
+    };
+
+    // Get the list of nodes that should flee (invalid to add)
+    let flee_nodes: Vec<_> = session.nodes_to_flee();
+    
+    // Debug: log flee nodes info (only when trail changes)
+    if session.is_changed() {
+        info!("Trail length: {}, Nodes that should flee: {:?}", 
+            session.current_trail().len(), 
+            flee_nodes.iter().map(|n| n.0).collect::<Vec<_>>()
+        );
+    }
+    
+    // Apply flee force to invalid nodes near the cursor
+    for (graph_node, mut physics) in &mut nodes {
+        // Only make invalid nodes flee
+        if !flee_nodes.contains(&graph_node.node_id) {
+            continue;
+        }
+
+        let to_node = physics.position - cursor_pos;
+        let distance = to_node.length();
+
+        // Only flee if cursor is within threshold (matching old behavior: 0.7 units)
+        if distance > 0.01 && distance < 0.7 {
+            let direction = to_node.normalize();
+            // Stronger force for closer distances (inverse square law)
+            let flee_strength = 1.5 / (distance * distance + 0.1);
+            physics.apply_force(direction * flee_strength);
+        }
+    }
+}
+
+/// Snap physics and colors back instantly when the board resets
+fn snap_on_reset(
+    session: Res<PuzzleSession>,
+    mut nodes: Query<(&GraphNode, &mut NodePhysics, &mut NodeVisual)>,
+) {
+    // Only trigger when session has changed (reset happened)
+    if !session.is_changed() {
+        return;
+    }
+
+    // If trail is empty, a reset just happened - snap everything back
+    if session.current_trail().is_empty() {
+        for (graph_node, mut physics, mut visual) in &mut nodes {
+            // Snap position back to rest instantly
+            physics.position = physics.rest_position;
+            physics.velocity = Vec3::ZERO;
+            physics.forces = Vec3::ZERO;
+
+            // Snap color back instantly
+            let valence = session.current_valences().get(graph_node.node_id);
+            let color = valence_to_color(valence);
+            visual.base_color = color;
+            visual.target_color = color;
+            visual.current_color = color;
+            visual.infection_progress = 1.0; // Fully "infected" (instant color)
+        }
+        info!("Snapped all nodes back to rest!");
     }
 }

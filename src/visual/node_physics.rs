@@ -362,13 +362,21 @@ pub fn trigger_node_interactions(
         return;
     };
 
-    // Push all OTHER nodes away from the clicked node
-    for (graph_node, mut physics, mut visual) in &mut nodes {
+    // Get nodes that should flee (invalid to add)
+    let flee_nodes: Vec<_> = session.nodes_to_flee();
+
+    // Push only INVALID nodes away from the clicked node
+    for (graph_node, mut physics, _visual) in &mut nodes {
         if Some(graph_node.node_id) == trail.last().copied() {
             // Trigger effects on the clicked node (ripple disabled for debugging)
             // visual.ripple_phase = 0.0;
             // visual.ripple_amplitude = 0.3;
             info!("Clicked node {}", graph_node.node_id.0);
+            continue;
+        }
+
+        // Only push invalid nodes
+        if !flee_nodes.contains(&graph_node.node_id) {
             continue;
         }
 
@@ -384,7 +392,7 @@ pub fn trigger_node_interactions(
             // Apply push impulse
             physics.apply_impulse(direction * push_strength);
             info!(
-                "Pushing node {} away from {} (distance: {:.2})",
+                "Pushing invalid node {} away from {} (distance: {:.2})",
                 graph_node.node_id.0,
                 trail.last().unwrap().0,
                 distance
