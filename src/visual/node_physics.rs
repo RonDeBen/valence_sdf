@@ -42,12 +42,12 @@ pub mod debug_flags {
     pub const ENABLE_SPRING_TO_REST: bool = true; // Core: nodes return to grid
     pub const ENABLE_EDGE_SPRINGS: bool = true; // Rubber band connections
     pub const ENABLE_NODE_REPULSION: bool = false; // Personal space (can cause jank)
-    pub const ENABLE_CLICK_IMPULSE: bool = true; // Push nodes on click
+    pub const ENABLE_CLICK_IMPULSE: bool = true;
 
     // === Visual Effects ===
-    pub const ENABLE_RIPPLES: bool = false; // Ripple waves (currently disabled)
-    pub const ENABLE_VELOCITY_SQUASH: bool = true; // Motion blur effect
-    pub const ENABLE_SPIKES: bool = false; // Invalid node spikes (not implemented)
+    pub const ENABLE_RIPPLES: bool = true;
+    pub const ENABLE_VELOCITY_SQUASH: bool = true;
+    pub const ENABLE_SPIKES: bool = false;
 }
 
 // ============================================================================
@@ -337,10 +337,6 @@ pub fn trigger_node_interactions(
 ) {
     use debug_flags::ENABLE_CLICK_IMPULSE;
 
-    if !ENABLE_CLICK_IMPULSE {
-        return; // Disable click effects for debugging
-    }
-
     // Only check if session changed (new node added)
     if !session.is_changed() {
         return;
@@ -365,13 +361,36 @@ pub fn trigger_node_interactions(
     // Get nodes that should flee (invalid to add)
     let flee_nodes: Vec<_> = session.nodes_to_flee();
 
-    // Push only INVALID nodes away from the clicked node
-    for (graph_node, mut physics, _visual) in &mut nodes {
+    // Pre-collect the previous node position if we need it for rubber band effect
+    let prev_node_pos = if trail.len() > 1 {
+        let prev_node_id = trail[trail.len() - 2];
+        nodes.iter()
+            .find(|(n, _, _)| n.node_id == prev_node_id)
+            .map(|(_, physics, _)| physics.position)
+    } else {
+        None
+    };
+
+    for (graph_node, mut physics, mut visual) in &mut nodes {
         if Some(graph_node.node_id) == trail.last().copied() {
-            // Trigger effects on the clicked node (ripple disabled for debugging)
-            // visual.ripple_phase = 0.0;
-            // visual.ripple_amplitude = 0.3;
-            info!("Clicked node {}", graph_node.node_id.0);
+            // === TRIGGER RIPPLE on the clicked node ===
+            visual.ripple_phase = 0.0;
+            visual.ripple_amplitude = 1.0; // Full strength ripple
+            
+            // === RUBBER BAND SNAP: Push node away from the edge ===
+            if let Some(prev_pos) = prev_node_pos {
+                // Calculate direction away from previous node (along the edge)
+                let edge_dir = physics.position - prev_pos;
+                let distance = edge_dir.length();
+                
+                if distance > 0.01 {
+                    let direction = edge_dir.normalize();
+                    // MUCH STRONGER impulse for testing (was 0.4, now 2.0!)
+                    let snap_strength = 0.5;
+                    physics.apply_impulse(direction * snap_strength);
+                    
+                }
+            } 
             continue;
         }
 
@@ -380,23 +399,23 @@ pub fn trigger_node_interactions(
             continue;
         }
 
-        // Calculate direction away from clicked node
-        let to_other = physics.position - last_pos;
-        let distance = to_other.length();
+        if ENABLE_CLICK_IMPULSE {
+            // Calculate direction away from clicked node
+            let to_other = physics.position - last_pos;
+            let distance = to_other.length();
 
-        if distance > 0.01 && distance < 2.5 {
-            // Only push nearby nodes
-            let direction = to_other.normalize();
-            let push_strength = PHYSICS.push_strength / (distance + 0.5);
+            if distance > 0.01 && distance < 2.5 {
+                let direction = to_other.normalize();
+                let push_strength = PHYSICS.push_strength / (distance + 0.5);
+                physics.apply_impulse(direction * push_strength);
 
-            // Apply push impulse
-            physics.apply_impulse(direction * push_strength);
-            info!(
-                "Pushing invalid node {} away from {} (distance: {:.2})",
-                graph_node.node_id.0,
-                trail.last().unwrap().0,
-                distance
-            );
+                info!(
+                    "Pushing invalid node {} away from {} (distance: {:.2})",
+                    graph_node.node_id.0,
+                    trail.last().unwrap().0,
+                    distance
+                );
+            }
         }
     }
 }
@@ -407,7 +426,7 @@ pub fn update_node_visuals(
     session: Res<PuzzleSession>,
     mut nodes: Query<(&GraphNode, &NodePhysics, &mut NodeVisual)>,
 ) {
-    use debug_flags::{ENABLE_RIPPLES, ENABLE_SPIKES, ENABLE_VELOCITY_SQUASH};
+    use debug_flags::{ENABLE_RIPPLES, ENABLE_VELOCITY_SQUASH};
 
     let dt = time.delta_secs();
     let valences = session.current_valences();
@@ -415,64 +434,62 @@ pub fn update_node_visuals(
     for (graph_node, physics, mut visual) in &mut nodes {
         let valence = valences.get(graph_node.node_id);
 
-        // === Color Infection Animation (spreading from edge contact points) ===
+        // === Color Infection Animation ===
         let new_target = crate::visual::graph::valence_to_color(valence);
 
-        // If target color changed, start new infection
         if (new_target - visual.target_color).length() > 0.1 {
-            visual.base_color = visual.current_color; // Save current as base
+            visual.base_color = visual.current_color;
             visual.target_color = new_target;
-            visual.infection_progress = 0.0; // Start infection animation
+            visual.infection_progress = 0.0;
         }
 
-        // Animate infection progress (spreading across surface)
         if visual.infection_progress < 1.0 {
-            visual.infection_progress += dt * 2.5; // Speed of infection spread (higher = faster)
+            visual.infection_progress += dt * 2.5;
             visual.infection_progress = visual.infection_progress.min(1.0);
         }
 
-        // Apply easing to make it feel snappier
         let eased_progress = ease_out_cubic(visual.infection_progress);
-
-        // For overall display color
         visual.current_color = visual.base_color.lerp(visual.target_color, eased_progress);
 
-        // === Squeeze from valence (always on) ===
+        // === Squeeze from valence ===
         visual.target_squeeze = match valence {
-            0 => 0.3, // Completed nodes are squeezed
-            1 => 0.1, // Almost done - slight squeeze
-            _ => 0.0, // Normal
+            0 => 0.3,
+            1 => 0.1,
+            _ => 0.0,
         };
         visual.squeeze_factor = visual.squeeze_factor.lerp(visual.target_squeeze, dt * 2.0);
 
-        // === Velocity squash (optional, doesn't stack with above) ===
+        // === Velocity squash ===
         if ENABLE_VELOCITY_SQUASH {
             let speed = physics.velocity.length();
-            // Only apply if moving fast AND not already squeezed by valence
             if speed > 0.2 && visual.target_squeeze < 0.05 {
                 let velocity_squeeze = (speed * 0.05).min(0.3);
                 visual.squeeze_factor = visual.squeeze_factor.max(velocity_squeeze);
             }
         }
 
-        // === Ripples (optional) ===
+        // === Ripples (NOW ACTIVE!) - Mobile optimized with bouncing ===
         if ENABLE_RIPPLES {
             if visual.ripple_amplitude > 0.01 {
-                visual.ripple_phase += dt * 8.0;
-                visual.ripple_amplitude *= 0.97;
+                // Advance phase for gentle bounce effect (~3.5 seconds total)
+                visual.ripple_phase += dt * 9.0; // Faster advance for shorter duration
+
+                // Faster decay to complete in 3.5 seconds
+                visual.ripple_amplitude *= 0.96; // Faster decay (was 0.98)
+
+                // Debug: log ripple state occasionally
+                if visual.ripple_phase < 0.1 {
+                    // Only log at the very start
+                    info!(
+                        "🌊 Node {} rippling: phase={:.2}, amplitude={:.2}",
+                        graph_node.node_id.0, visual.ripple_phase, visual.ripple_amplitude
+                    );
+                }
             } else {
                 visual.ripple_amplitude = 0.0;
             }
         } else {
-            visual.ripple_amplitude = 0.0; // Force off
-        }
-
-        // === Spikes for invalid nodes (not implemented yet) ===
-        if ENABLE_SPIKES {
-            // TODO: Implement invalid node detection
-            visual.is_invalid = false;
-        } else {
-            visual.is_invalid = false;
+            visual.ripple_amplitude = 0.0;
         }
     }
 }

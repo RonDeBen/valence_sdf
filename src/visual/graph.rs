@@ -225,10 +225,9 @@ fn update_sdf_scene(
         // Update stretch/squeeze (don't stack them!)
         let speed = physics.velocity.length();
         
-        // If moving fast, stretch in direction of motion
-        if speed > 0.15 {
+        if speed > 0.08 {  
             sphere.stretch_direction = physics.velocity.normalize();
-            sphere.stretch_factor = 1.0 + (speed * 0.15).min(0.3);  // Cap at 30% stretch
+            sphere.stretch_factor = 1.0 + (speed * 0.5).min(0.8);
         } 
         // If squeezed (from valence) and NOT moving fast, apply squeeze
         else if visual.squeeze_factor > 0.01 {

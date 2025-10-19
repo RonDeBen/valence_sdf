@@ -88,27 +88,71 @@ fn smin(a: f32, b: f32, k: f32) -> f32 {
     return min(a, b) - h * h * h * k * (1.0 / 6.0);
 }
 
-/// Add ripple distortion to a sphere (FIXED: much gentler)
+/// Combined ripple + pop effect - MOBILE OPTIMIZED with gentle bounce
 fn apply_ripple(base_sdf: f32, p: vec3<f32>, center: vec3<f32>,
                 phase: f32, amplitude: f32) -> f32 {
-    // Only apply if amplitude is significant AND phase is recent
-    if (amplitude < 0.01 || phase > 5.0) {
+    // Shorter duration - about 3.5 seconds total
+    if (amplitude < 0.01 || phase > 10.0) {
         return base_sdf;
     }
 
     let dist_from_center = length(p - center);
 
-    // Much gentler wave (reduced frequency from 10.0 to 5.0)
-    let wave_frequency = 5.0;
-    let wave = sin(dist_from_center * wave_frequency - phase * 3.0);
+    // === PART 1: Gentle Bounce Pop Effect ===
+    // One main expansion, then 1-2 gentle bounces back to normal
+    let bounce_frequency = 0.6;  // Much slower - just ~1.5 total bounces over 5 seconds
+    let damping = 0.5;           // How quickly it settles (0.5 = gentle settling)
+    
+    // Exponential decay envelope (gradual energy loss)
+    let envelope = exp(-phase * damping);
+    
+    // Oscillation (the gentle bouncing in and out)
+    let oscillation = sin(phase * bounce_frequency * 6.28318);  // 6.28318 = 2*PI
+    
+    // Combined: gentle bouncing that settles gradually
+    let pop_strength = oscillation * envelope * amplitude * 0.22;  // 22% max expansion
 
-    // Stronger falloff (decays faster, from 2.0 to 3.0)
-    let falloff = exp(-phase * 3.0);
+    // === PART 2: Traveling Wave Ripples - MORE PRONOUNCED ===
+    // Multiple wave cycles, stronger amplitude
+    let wave_frequency = 5.0;  // More ripples (was 4.0) - more cycles visible
+    let wave_speed = 3.0;      // Medium speed (was 2.5)
 
-    // Much smaller amplitude (scale down by 10x!)
-    let ripple_strength = wave * amplitude * falloff * 0.1;
+    // Wave equation - now with stronger amplitude
+    let wave = sin(dist_from_center * wave_frequency - phase * wave_speed);
 
-    return base_sdf + ripple_strength;
+    // Slower decay so waves travel farther and stay visible longer
+    let time_decay = exp(-phase * 0.6);  // Even slower (was 0.8)
+    let distance_decay = exp(-dist_from_center * 0.7);  // Travels farther (was 0.8)
+
+    let wave_falloff = time_decay * distance_decay;
+    let wave_strength = wave * amplitude * wave_falloff * 0.28;  // BIGGER waves (was 0.2)
+
+    // === COMBINE BOTH EFFECTS ===
+    // Pop makes the whole sphere bounce in/out like a basketball
+    // Waves add traveling ripples on top (more pronounced)
+    return base_sdf - pop_strength + wave_strength;
+}
+
+/// Radial pop effect - sphere briefly expands then contracts (ALTERNATIVE VERSION)
+/// To use this: swap the function names (rename apply_ripple → apply_ripple_wave, this → apply_ripple)
+fn apply_ripple_pop(base_sdf: f32, p: vec3<f32>, center: vec3<f32>,
+                    phase: f32, amplitude: f32) -> f32 {
+    if (amplitude < 0.01 || phase > 3.0) {
+        return base_sdf;
+    }
+
+    // Ease-out: fast expansion, slow return
+    let t = phase / 3.0;  // Normalize to 0-1 over 3 seconds (longer duration)
+    let expansion = sin(t * 3.14159) * amplitude;  // Smooth pop
+
+    // Time decay
+    let time_decay = 1.0 - t;
+
+    // Uniform expansion (makes whole sphere bigger then smaller)
+    // Increased from 0.05 to 0.12 for more visible effect
+    let size_change = expansion * time_decay * 0.12;
+
+    return base_sdf - size_change;
 }
 
 /// Get color for a sphere surface point with infection gradient
@@ -203,6 +247,7 @@ fn sdf_scene(p: vec3<f32>) -> vec3<f32> {  // Returns (distance, sphere_idx, is_
 
         // Apply ripple
         d = apply_ripple(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
+        // d = apply_ripple_pop(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
 
         if (d < min_dist) {
             min_dist = d;
