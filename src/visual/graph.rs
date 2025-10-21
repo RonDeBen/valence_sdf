@@ -3,10 +3,12 @@ use crate::game::session::{PuzzleSession, SessionResult};
 use crate::graph::{NodeId, Valences};
 use crate::input::{PointerEvent, PointerEventType};
 use crate::sdf_material::{SceneMaterialHandle, SdfCylinder, SdfSceneMaterial, SdfSphere};
-use crate::visual::node_physics::{
-    apply_edge_spring_forces, apply_node_repulsion, debug_physics, simulate_node_physics,
-    trigger_node_interactions, update_node_visuals, NodePhysics, NodeVisual,
-};
+use crate::visual::node_physics::update_node_visuals;
+use crate::visual::physics::debug::debug_physics;
+use crate::visual::physics::edge_spring_forces::apply_edge_spring_forces;
+use crate::visual::physics::node_interactions::trigger_node_interactions;
+use crate::visual::physics::node_repulsion::apply_node_repulsion;
+use crate::visual::physics::{NodePhysics, NodeVisual, simulate_node_physics};
 use bevy::prelude::*;
 
 pub struct GraphPlugin;
@@ -20,20 +22,20 @@ impl Plugin for GraphPlugin {
                 Update,
                 (
                     handle_pointer_input,
-                    draw_trail_preview,
+                    // draw_trail_preview,
                     debug_pointer,
                     // Physics systems
                     trigger_node_interactions,
                     apply_edge_spring_forces,
                     apply_node_repulsion,
                     simulate_node_physics,
-                    node_hover_flee,      // NEW: Make hovered node flee
+                    node_hover_flee,
                     // Visual updates
                     update_node_visuals,
-                    update_sdf_scene,     // Update the unified scene
-                    snap_on_reset,        // NEW: Snap back on reset
+                    update_sdf_scene,
+                    snap_on_reset,
                     // Debug
-                    debug_physics,
+                    // debug_physics,
                 )
                     .chain(), // Run in order
             );
@@ -122,13 +124,12 @@ fn setup_scene(
             let color = valence_to_color(valence);
 
             // Initialize the sphere data in the material
-            let idx = node_id.0 as usize;
-            scene_material.data.spheres[idx] = SdfSphere {
+            scene_material.data.spheres[node_id.index()] = SdfSphere {
                 center,
                 radius: node_radius,
                 base_color: color,
                 target_color: color,
-                infection_progress: 1.0,  // Start fully infected (instant color)
+                infection_progress: 1.0, // Start fully infected (instant color)
                 _padding1: 0.0,
                 _padding2: 0.0,
                 _padding3: 0.0,
@@ -150,9 +151,9 @@ fn setup_scene(
                 },
                 NodeVisual {
                     base_radius: node_radius,
-                    base_color: color,      // Infection: start color
-                    current_color: color,   // Infection: current color
-                    target_color: color,    // Infection: target color
+                    base_color: color,       // Infection: start color
+                    current_color: color,    // Infection: current color
+                    target_color: color,     // Infection: target color
                     infection_progress: 1.0, // Start fully infected
                     ..default()
                 },
@@ -197,6 +198,8 @@ pub fn valence_to_color(valence: usize) -> Vec4 {
 fn update_sdf_scene(
     nodes: Query<(&GraphNode, &NodePhysics, &NodeVisual)>,
     session: Res<PuzzleSession>,
+    hover_state: Res<HoverState>,
+    drag_state: Res<DragState>,
     mut materials: ResMut<Assets<SdfSceneMaterial>>,
     scene_handle: Res<SceneMaterialHandle>,
 ) {
@@ -206,8 +209,8 @@ fn update_sdf_scene(
 
     // Update all sphere positions and visuals
     for (graph_node, physics, visual) in &nodes {
-        let idx = graph_node.node_id.0 as usize;
-        let sphere = &mut material.data.spheres[idx];
+        // let idx = graph_node.node_id.0 as usize;
+        let sphere = &mut material.data.spheres[graph_node.node_id.index()];
 
         // Update position from physics
         sphere.center = physics.position;
@@ -220,20 +223,20 @@ fn update_sdf_scene(
         // Update visual effects
         sphere.ripple_phase = visual.ripple_phase;
         sphere.ripple_amplitude = visual.ripple_amplitude;
-        sphere.spike_amount = if visual.is_invalid { 1.0 } else { 0.0 };
+        sphere.spike_amount = visual.glow;  // Repurpose spike_amount for glow effect
 
         // Update stretch/squeeze (don't stack them!)
         let speed = physics.velocity.length();
-        
-        if speed > 0.08 {  
+
+        if speed > 0.08 {
             sphere.stretch_direction = physics.velocity.normalize();
             sphere.stretch_factor = 1.0 + (speed * 0.5).min(0.8);
-        } 
+        }
         // If squeezed (from valence) and NOT moving fast, apply squeeze
         else if visual.squeeze_factor > 0.01 {
             sphere.stretch_direction = Vec3::Y;
-            sphere.stretch_factor = 1.0 - (visual.squeeze_factor * 0.5);  // Half strength squeeze
-        } 
+            sphere.stretch_factor = 1.0 - (visual.squeeze_factor * 0.5); // Half strength squeeze
+        }
         // Default: no distortion
         else {
             sphere.stretch_direction = Vec3::Y;
@@ -243,9 +246,9 @@ fn update_sdf_scene(
 
     // Update edge cylinders
     let edges = session.edges();
-    material.data.num_cylinders = edges.len().min(17) as u32;
-
-    for (i, edge) in edges.edges_in_order().iter().enumerate().take(17) {
+    let mut cylinder_count = edges.len();
+    
+    for (i, edge) in edges.edges_in_order().iter().enumerate().take(16) {  // Save room for preview
         // Find positions and colors of connected nodes
         let start_data = nodes
             .iter()
@@ -260,20 +263,53 @@ fn update_sdf_scene(
         if let (Some((start, start_color)), Some((end, end_color))) = (start_data, end_data) {
             // Blend the two node colors for a gradient effect
             let blended_color = (start_color + end_color) * 0.5;
-            
+
             material.data.cylinders[i] = SdfCylinder {
                 start,
                 _padding1: 0.0,
                 end,
-                radius: 0.08, // Thin connecting edges
-                color: blended_color, // Gradient blend of connected nodes
-                node_a_idx: edge.from.0 as u32,  // Track which nodes this connects
+                radius: 0.08,                   // Thin connecting edges
+                color: blended_color,           // Gradient blend of connected nodes
+                node_a_idx: edge.from.0 as u32, // Track which nodes this connects
                 node_b_idx: edge.to.0 as u32,
                 _padding2: 0,
                 _padding3: 0,
             };
         }
     }
+    
+    // Add preview cylinder from last node to cursor
+    if drag_state.is_dragging {
+        let trail = session.current_trail();
+        if let Some(&last_node_id) = trail.last() {
+            if let Some(cursor_pos) = hover_state.cursor_world_pos {
+                // Find last node data
+                if let Some((_, physics, visual)) = nodes
+                    .iter()
+                    .find(|(node, _, _)| node.node_id == last_node_id)
+                {
+                    let last_pos = physics.position;
+                    let last_color = visual.current_color;
+                    
+                    // Create preview cylinder (constant radius, no thick ends)
+                    material.data.cylinders[cylinder_count.min(16)] = SdfCylinder {
+                        start: last_pos,
+                        _padding1: 0.0,
+                        end: cursor_pos,
+                        radius: 0.08,  // Same as regular edges
+                        color: last_color * Vec4::new(1.0, 1.0, 1.0, 0.5),  // Semi-transparent
+                        node_a_idx: last_node_id.0 as u32,
+                        node_b_idx: last_node_id.0 as u32,  // Same = preview (shader detects this)
+                        _padding2: 0,
+                        _padding3: 0,
+                    };
+                    cylinder_count += 1;
+                }
+            }
+        }
+    }
+    
+    material.data.num_cylinders = cylinder_count.min(17) as u32;
 }
 
 /// Handle pointer input for drawing trails
@@ -505,15 +541,16 @@ fn node_hover_flee(
 
     // Get the list of nodes that should flee (invalid to add)
     let flee_nodes: Vec<_> = session.nodes_to_flee();
-    
+
     // Debug: log flee nodes info (only when trail changes)
     if session.is_changed() {
-        info!("Trail length: {}, Nodes that should flee: {:?}", 
-            session.current_trail().len(), 
+        info!(
+            "Trail length: {}, Nodes that should flee: {:?}",
+            session.current_trail().len(),
             flee_nodes.iter().map(|n| n.0).collect::<Vec<_>>()
         );
     }
-    
+
     // Apply flee force to invalid nodes near the cursor
     for (graph_node, mut physics) in &mut nodes {
         // Only make invalid nodes flee
