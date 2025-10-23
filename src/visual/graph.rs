@@ -11,12 +11,36 @@ use crate::visual::physics::node_repulsion::apply_node_repulsion;
 use crate::visual::physics::{NodePhysics, NodeVisual, simulate_node_physics};
 use bevy::prelude::*;
 
+/// Resource to track if flee mode is currently active
+#[derive(Resource, Default)]
+pub struct FleeMode {
+    pub active: bool,
+    pub trigger_node: Option<NodeId>, // Which node triggered flee mode
+    pub time_active: f32,             // How long we've been fleeing
+}
+
+impl FleeMode {
+    pub fn activate(&mut self, node: NodeId) {
+        self.active = true;
+        self.trigger_node = Some(node);
+        self.time_active = 0.0;
+    }
+
+    pub fn deactivate(&mut self) {
+        self.active = false;
+        self.trigger_node = None;
+        self.time_active = 0.0;
+    }
+}
+
 pub struct GraphPlugin;
 
 impl Plugin for GraphPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<DragState>()
             .init_resource::<HoverState>()
+            .init_resource::<EdgeWaves>()
+            .init_resource::<FleeMode>()
             .add_systems(Startup, (setup_puzzle, setup_scene).chain())
             .add_systems(
                 Update,
@@ -26,12 +50,16 @@ impl Plugin for GraphPlugin {
                     debug_pointer,
                     // Physics systems
                     trigger_node_interactions,
-                    apply_edge_spring_forces,
+                    spawn_edge_waves,
+                    // apply_edge_spring_forces,
                     apply_node_repulsion,
+                    apply_edge_spring_forces,
                     simulate_node_physics,
                     node_hover_flee,
+                    snap_back_from_flee, // NEW: Snap back after flee
                     // Visual updates
                     update_node_visuals,
+                    update_edge_waves, // NEW: Update traveling waves
                     update_sdf_scene,
                     snap_on_reset,
                     // Debug
@@ -59,6 +87,22 @@ struct DragState {
 struct HoverState {
     hovered_node: Option<NodeId>,
     cursor_world_pos: Option<Vec3>,
+}
+
+/// Resource to track traveling tension waves on edges
+#[derive(Resource, Default)]
+struct EdgeWaves {
+    waves: Vec<EdgeWave>,
+}
+
+/// A traveling tension wave on an edge
+#[derive(Clone)]
+struct EdgeWave {
+    from: NodeId,
+    to: NodeId,
+    progress: f32,  // 0.0 = at 'from', 1.0 = at 'to'
+    amplitude: f32, // Wave strength (0.0 to 1.0)
+    direction: f32, // 0.0 = from→to, 1.0 = to→from
 }
 
 /// Setup the puzzle session
@@ -200,6 +244,7 @@ fn update_sdf_scene(
     session: Res<PuzzleSession>,
     hover_state: Res<HoverState>,
     drag_state: Res<DragState>,
+    edge_waves: Res<EdgeWaves>,
     mut materials: ResMut<Assets<SdfSceneMaterial>>,
     scene_handle: Res<SceneMaterialHandle>,
 ) {
@@ -223,7 +268,7 @@ fn update_sdf_scene(
         // Update visual effects
         sphere.ripple_phase = visual.ripple_phase;
         sphere.ripple_amplitude = visual.ripple_amplitude;
-        sphere.spike_amount = visual.glow;  // Repurpose spike_amount for glow effect
+        sphere.spike_amount = visual.glow; // Repurpose spike_amount for glow effect
 
         // Update stretch/squeeze (don't stack them!)
         let speed = physics.velocity.length();
@@ -247,8 +292,9 @@ fn update_sdf_scene(
     // Update edge cylinders
     let edges = session.edges();
     let mut cylinder_count = edges.len();
-    
-    for (i, edge) in edges.edges_in_order().iter().enumerate().take(16) {  // Save room for preview
+
+    for (i, edge) in edges.edges_in_order().iter().enumerate().take(16) {
+        // Save room for preview
         // Find positions and colors of connected nodes
         let start_data = nodes
             .iter()
@@ -264,6 +310,23 @@ fn update_sdf_scene(
             // Blend the two node colors for a gradient effect
             let blended_color = (start_color + end_color) * 0.5;
 
+            // Find active wave for this edge
+            let mut wave_phase = -1.0; // -1.0 = no wave
+            let mut wave_amplitude = 0.0;
+
+            for wave in &edge_waves.waves {
+                if wave.from == edge.from && wave.to == edge.to {
+                    // Calculate wave position (0.0 to 1.0 along edge)
+                    wave_phase = if wave.direction < 0.5 {
+                        wave.progress // from→to
+                    } else {
+                        1.0 - wave.progress // to→from
+                    };
+                    wave_amplitude = wave.amplitude;
+                    break;
+                }
+            }
+
             material.data.cylinders[i] = SdfCylinder {
                 start,
                 _padding1: 0.0,
@@ -272,12 +335,12 @@ fn update_sdf_scene(
                 color: blended_color,           // Gradient blend of connected nodes
                 node_a_idx: edge.from.0 as u32, // Track which nodes this connects
                 node_b_idx: edge.to.0 as u32,
-                _padding2: 0,
-                _padding3: 0,
+                wave_phase,     // Wave position
+                wave_amplitude, // Wave strength
             };
         }
     }
-    
+
     // Add preview cylinder from last node to cursor
     if drag_state.is_dragging {
         let trail = session.current_trail();
@@ -290,25 +353,25 @@ fn update_sdf_scene(
                 {
                     let last_pos = physics.position;
                     let last_color = visual.current_color;
-                    
+
                     // Create preview cylinder (constant radius, no thick ends)
                     material.data.cylinders[cylinder_count.min(16)] = SdfCylinder {
                         start: last_pos,
                         _padding1: 0.0,
                         end: cursor_pos,
-                        radius: 0.08,  // Same as regular edges
-                        color: last_color * Vec4::new(1.0, 1.0, 1.0, 0.5),  // Semi-transparent
+                        radius: 0.08, // Same as regular edges
+                        color: last_color * Vec4::new(1.0, 1.0, 1.0, 0.5), // Semi-transparent
                         node_a_idx: last_node_id.0 as u32,
-                        node_b_idx: last_node_id.0 as u32,  // Same = preview (shader detects this)
-                        _padding2: 0,
-                        _padding3: 0,
+                        node_b_idx: last_node_id.0 as u32, // Same = preview (shader detects this)
+                        wave_phase: -1.0,                  // No wave on preview
+                        wave_amplitude: 0.0,
                     };
                     cylinder_count += 1;
                 }
             }
         }
     }
-    
+
     material.data.num_cylinders = cylinder_count.min(17) as u32;
 }
 
@@ -320,6 +383,7 @@ fn handle_pointer_input(
     mut session: ResMut<PuzzleSession>,
     mut drag_state: ResMut<DragState>,
     mut hover_state: ResMut<HoverState>,
+    mut flee_mode: ResMut<FleeMode>,
 ) {
     let Ok((camera, camera_transform)) = camera_query.single() else {
         return;
@@ -352,10 +416,12 @@ fn handle_pointer_input(
                             SessionResult::FirstNode(node) => {
                                 info!("Started trail at node {}", node.0);
                                 drag_state.is_dragging = true;
+                                flee_mode.deactivate();
                             }
                             SessionResult::EdgeAdded(edge) => {
                                 info!("Added edge: {}-{}", edge.from.0, edge.to.0);
                                 drag_state.is_dragging = true;
+                                flee_mode.deactivate(); // Success - deactivate flee mode
                             }
                             SessionResult::Complete {
                                 solution: _,
@@ -372,9 +438,11 @@ fn handle_pointer_input(
                                 session.reset();
                                 info!("Board reset - try to find another solution!");
                                 drag_state.is_dragging = false;
+                                flee_mode.deactivate();
                             }
                             SessionResult::Invalid(err) => {
-                                warn!("Invalid move: {}", err);
+                                warn!("❌ Invalid move attempted: {} - ACTIVATING FLEE MODE", err);
+                                flee_mode.activate(graph_node.node_id);
                             }
                         }
                         break;
@@ -396,6 +464,7 @@ fn handle_pointer_input(
                             match session.add_node(graph_node.node_id) {
                                 SessionResult::EdgeAdded(edge) => {
                                     info!("Added edge: {}-{}", edge.from.0, edge.to.0);
+                                    flee_mode.deactivate(); // Success - deactivate flee mode
                                 }
                                 SessionResult::Complete {
                                     solution: _,
@@ -412,9 +481,15 @@ fn handle_pointer_input(
                                     session.reset();
                                     info!("Board reset - try to find another solution!");
                                     drag_state.is_dragging = false;
+                                    flee_mode.deactivate();
                                 }
-                                SessionResult::Invalid(_err) => {
-                                    // Silently ignore invalid moves during drag (reduces spam)
+                                SessionResult::Invalid(err) => {
+                                    // Activate flee mode on invalid attempt
+                                    info!(
+                                        "❌ Invalid move attempted: {} - ACTIVATING FLEE MODE",
+                                        err
+                                    );
+                                    flee_mode.activate(graph_node.node_id);
                                 }
                                 _ => {}
                             }
@@ -428,6 +503,12 @@ fn handle_pointer_input(
                 // Stop dragging and reset for next attempt
                 drag_state.is_dragging = false;
                 let trail_length = session.current_trail().len();
+
+                // Deactivate flee mode when user releases
+                if flee_mode.active {
+                    info!("User released pointer - deactivating flee mode");
+                    flee_mode.deactivate();
+                }
 
                 if trail_length > 0 {
                     info!("Released - resetting board (had {} nodes)", trail_length);
@@ -523,15 +604,16 @@ fn debug_pointer(
     }
 }
 
-/// Make invalid nodes flee from cursor when approached
+/// Make invalid nodes flee ONLY when flee mode is active
 fn node_hover_flee(
     hover_state: Res<HoverState>,
-    drag_state: Res<DragState>,
     session: Res<PuzzleSession>,
+    flee_mode: Res<FleeMode>,
     mut nodes: Query<(&GraphNode, &mut NodePhysics)>,
 ) {
-    // Only apply when not dragging
-    if drag_state.is_dragging {
+    // Only apply flee forces when in active flee mode
+    // Flee continues until: valid node added, or pointer released
+    if !flee_mode.active {
         return;
     }
 
@@ -539,21 +621,11 @@ fn node_hover_flee(
         return;
     };
 
-    // Get the list of nodes that should flee (invalid to add)
+    // Get the list of nodes that should flee
     let flee_nodes: Vec<_> = session.nodes_to_flee();
 
-    // Debug: log flee nodes info (only when trail changes)
-    if session.is_changed() {
-        info!(
-            "Trail length: {}, Nodes that should flee: {:?}",
-            session.current_trail().len(),
-            flee_nodes.iter().map(|n| n.0).collect::<Vec<_>>()
-        );
-    }
-
-    // Apply flee force to invalid nodes near the cursor
+    // Apply flee forces
     for (graph_node, mut physics) in &mut nodes {
-        // Only make invalid nodes flee
         if !flee_nodes.contains(&graph_node.node_id) {
             continue;
         }
@@ -561,12 +633,72 @@ fn node_hover_flee(
         let to_node = physics.position - cursor_pos;
         let distance = to_node.length();
 
-        // Only flee if cursor is within threshold (matching old behavior: 0.7 units)
-        if distance > 0.01 && distance < 0.7 {
-            let direction = to_node.normalize();
-            // Stronger force for closer distances (inverse square law)
-            let flee_strength = 1.5 / (distance * distance + 0.1);
-            physics.apply_force(direction * flee_strength);
+        // Check if this is the node they tried to click
+        let is_trigger = flee_mode.trigger_node == Some(graph_node.node_id);
+
+        if is_trigger {
+            // === DRAMATIC FLEE: The node they tried to add ===
+            if distance > 0.01 && distance < 3.0 {
+                let direction = to_node.normalize();
+                let flee_strength = 20.0 / (distance * distance + 0.01);
+                physics.apply_force(direction * flee_strength);
+            }
+        } else {
+            // === AMBIENT FLEE: Other invalid nodes ===
+            if distance > 0.01 && distance < 1.5 {
+                let direction = to_node.normalize();
+                let flee_strength = 5.0 / (distance * distance + 0.05);
+                physics.apply_force(direction * flee_strength);
+            }
+        }
+    }
+}
+
+/// Snap nodes back to rest when flee mode ends
+fn snap_back_from_flee(
+    flee_mode: Res<FleeMode>,
+    mut last_flee_state: Local<bool>,
+    session: Res<PuzzleSession>,
+    mut nodes: Query<(&GraphNode, &mut NodePhysics)>,
+) {
+    // Detect flee mode just ended
+    let just_deactivated = *last_flee_state && !flee_mode.active;
+    *last_flee_state = flee_mode.active;
+
+    if !just_deactivated {
+        return;
+    }
+
+    info!("Flee mode ended - snapping nodes back to rest");
+
+    let flee_nodes: Vec<_> = session.nodes_to_flee();
+
+    // Snap all flee nodes back - INSTANT position reset, not impulse
+    for (graph_node, mut physics) in &mut nodes {
+        if flee_nodes.contains(&graph_node.node_id) {
+            let to_rest = physics.rest_position - physics.position;
+            let distance = to_rest.length();
+
+            if distance > 0.01 {
+                // Check if this is the trigger node (fled the farthest)
+                let is_trigger = flee_mode.trigger_node == Some(graph_node.node_id);
+
+                // === INSTANT SNAP - directly set position ===
+                // Move most of the way back instantly
+                let snap_ratio = if is_trigger { 0.95 } else { 0.90 }; // Snap 90-95% of the way
+                physics.position += to_rest * snap_ratio;
+
+                // Zero out velocity completely to prevent drift
+                physics.velocity = Vec3::ZERO;
+
+                info!(
+                    "Instantly snapped node {} back {:.0}% (distance was: {:.2}, trigger: {})",
+                    graph_node.node_id.0,
+                    snap_ratio * 100.0,
+                    distance,
+                    is_trigger
+                );
+            }
         }
     }
 }
@@ -599,4 +731,55 @@ fn snap_on_reset(
         }
         info!("Snapped all nodes back to rest!");
     }
+}
+
+/// Spawn tension waves on edges when a node is clicked
+fn spawn_edge_waves(session: Res<PuzzleSession>, mut edge_waves: ResMut<EdgeWaves>) {
+    // Only spawn waves when session changes (node was clicked)
+    if !session.is_changed() {
+        return;
+    }
+
+    let trail = session.current_trail();
+    let Some(&clicked_node) = trail.last() else {
+        return;
+    };
+
+    // Spawn waves on all edges connected to the clicked node
+    let edges = session.edges();
+    for edge in edges.edges_in_order() {
+        if edge.from == clicked_node {
+            // Wave travels from→to
+            edge_waves.waves.push(EdgeWave {
+                from: edge.from,
+                to: edge.to,
+                progress: 0.0,
+                amplitude: 1.0,
+                direction: 0.0, // from→to
+            });
+        } else if edge.to == clicked_node {
+            // Wave travels to→from (backwards)
+            edge_waves.waves.push(EdgeWave {
+                from: edge.from,
+                to: edge.to,
+                progress: 0.0,
+                amplitude: 1.0,
+                direction: 1.0, // to→from
+            });
+        }
+    }
+}
+
+/// Update traveling tension waves on edges
+fn update_edge_waves(time: Res<Time>, mut edge_waves: ResMut<EdgeWaves>) {
+    let dt = time.delta_secs();
+
+    // Update all active waves
+    edge_waves.waves.retain_mut(|wave| {
+        wave.progress += dt * 2.0; // Speed of wave travel
+        wave.amplitude *= 0.95_f32.powf(dt * 60.0); // Exponential decay
+
+        // Keep wave if it's still active
+        wave.progress < 1.0 && wave.amplitude > 0.01
+    });
 }

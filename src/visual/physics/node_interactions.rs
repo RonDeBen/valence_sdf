@@ -3,21 +3,31 @@ use bevy::prelude::*;
 use crate::{
     game::session::PuzzleSession,
     visual::{
-        graph::GraphNode,
+        graph::{GraphNode, FleeMode},
         physics::{NodePhysics, NodeVisual, PHYSICS},
     },
 };
+
+/// Track the last trail length to detect actual additions (not just session mutations)
+#[derive(Resource, Default)]
+pub struct LastTrailLength(pub usize);
+
 /// Trigger effects when user interacts with nodes
 pub fn trigger_node_interactions(
     session: Res<PuzzleSession>,
+    mut last_trail_length: Local<usize>,
     mut nodes: Query<(&GraphNode, &mut NodePhysics, &mut NodeVisual)>,
 ) {
-    // Only check if session changed (new node added)
-    if !session.is_changed() {
+    let trail = session.current_trail();
+    let current_length = trail.len();
+    
+    // Only trigger if trail length actually increased (node was ADDED, not just session mutated)
+    if current_length <= *last_trail_length {
+        *last_trail_length = current_length;
         return;
     }
-
-    let trail = session.current_trail();
+    
+    *last_trail_length = current_length;
 
     // Get the position of the last clicked node
     let last_node_pos = if let Some(&last_node) = trail.last() {
@@ -32,9 +42,6 @@ pub fn trigger_node_interactions(
     let Some(last_pos) = last_node_pos else {
         return;
     };
-
-    // Get nodes that should flee (invalid to add)
-    let flee_nodes: Vec<_> = session.nodes_to_flee();
 
     // Pre-collect the previous node position if we need it for rubber band effect
     let prev_node_pos = if trail.len() > 1 {
@@ -64,26 +71,16 @@ pub fn trigger_node_interactions(
 
                 if distance > 0.01 {
                     let direction = edge_dir.normalize();
-                    let snap_strength = 0.5;
+                    let snap_strength = 0.15;
                     physics.apply_impulse(direction * snap_strength);
                 }
             }
+            
             continue;
         }
 
-        // Only push invalid nodes
-        if !flee_nodes.contains(&graph_node.node_id) {
-            continue;
-        }
-
-        // Calculate direction away from clicked node
-        let to_other = physics.position - last_pos;
-        let distance = to_other.length();
-
-        if distance > 0.01 && distance < 2.5 {
-            let direction = to_other.normalize();
-            let push_strength = PHYSICS.push_strength / (distance + 0.5);
-            physics.apply_impulse(direction * push_strength);
-        }
+        // Note: The push/impulse effect on invalid nodes has been moved to node_hover_flee
+        // in graph.rs where it applies continuous flee forces while hovering
     }
 }
+

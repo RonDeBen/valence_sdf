@@ -33,8 +33,10 @@ struct SdfCylinder {
     // Track which nodes this connects
     node_a_idx: u32,
     node_b_idx: u32,
-    _padding2: u32,
-    _padding3: u32,
+    
+    // Tension wave animation
+    wave_phase: f32,      // Where the wave is (0-1), -1 = no wave
+    wave_amplitude: f32,  // Strength of squeeze
 }
 
 struct SdfSceneUniform {
@@ -68,25 +70,45 @@ fn sdf_cylinder(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, radius: f32) -> f32 {
     return length(pa - ba * h) - radius;
 }
 
-/// SDF for a variable-radius cylinder (rubber band shape)
-/// Thick at endpoints, thin in the middle
-fn sdf_rubber_band(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, base_radius: f32) -> f32 {
+/// SDF for a variable-radius cylinder (rubber band shape) with traveling tension wave
+/// Thick at endpoints, thin in the middle, with optional squeeze wave
+fn sdf_rubber_band(
+    p: vec3<f32>, 
+    a: vec3<f32>, 
+    b: vec3<f32>, 
+    base_radius: f32,
+    wave_phase: f32,      // Where the wave is (0-1), -1 = no wave
+    wave_amplitude: f32   // Strength of squeeze
+) -> f32 {
     let pa = p - a;
     let ba = b - a;
     let h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
 
-    // Parabola: thick at both ends (h=0 and h=1), thin in middle (h=0.5)
-    // This creates a symmetric rubber band shape
+    // Base rubber band shape (parabola)
     let center_dist = abs(h - 0.5) * 2.0;  // 0 at center, 1 at ends
-
-    // Thickness scaling: adjust these to change overall size while keeping ratio
-    // Format: min_thickness + (max_thickness - min_thickness) * curve
     let min_thickness = 0.66;
     let max_thickness = 2.5;
-    let thickness_curve = min_thickness + (max_thickness - min_thickness) * center_dist * center_dist;
+    let base_thickness = min_thickness + (max_thickness - min_thickness) * center_dist * center_dist;
+    
+    // === TENSION WAVE EFFECT ===
+    var wave_effect = 1.0;
+    
+    if (wave_phase >= 0.0) {  // Wave is active
+        // Distance from wave position
+        let dist_from_wave = abs(h - wave_phase);
+        
+        // Gaussian squeeze centered at wave position
+        let wave_width = 0.15;  // How wide the squeeze is
+        let squeeze = exp(-dist_from_wave * dist_from_wave / (wave_width * wave_width));
+        
+        // Squeeze factor: 1.0 = normal, 0.4 = very squeezed
+        let min_squeeze = 0.4;  // How much to squeeze (lower = more squeeze)
+        wave_effect = mix(1.0, min_squeeze, squeeze * wave_amplitude);
+    }
+    
+    let thickness_curve = base_thickness * wave_effect;
     let radius = base_radius * thickness_curve;
 
-    // Standard cylinder distance calculation with varying radius
     return length(pa - ba * h) - radius;
 }
 
@@ -311,8 +333,8 @@ fn sdf_scene(p: vec3<f32>) -> vec3<f32> {  // Returns (distance, sphere_idx, is_
             // Preview edge: constant radius (no thick blob at cursor)
             d = sdf_cylinder(p, cyl.start, cyl.end, cyl.radius);
         } else {
-            // Regular edge: rubber band shape (thick at ends, thin in middle)
-            d = sdf_rubber_band(p, cyl.start, cyl.end, cyl.radius);
+            // Regular edge: rubber band shape with tension wave
+            d = sdf_rubber_band(p, cyl.start, cyl.end, cyl.radius, cyl.wave_phase, cyl.wave_amplitude);
         }
 
         // Smooth blend

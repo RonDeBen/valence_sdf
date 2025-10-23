@@ -66,8 +66,10 @@ pub struct SdfCylinder {
     // Track which nodes this cylinder connects (for infection gradient)
     pub node_a_idx: u32,
     pub node_b_idx: u32,
-    pub _padding2: u32,
-    pub _padding3: u32,
+    
+    // Tension wave animation
+    pub wave_phase: f32,      // Where the wave is (0-1), -1 = no wave
+    pub wave_amplitude: f32,  // Strength of squeeze
 }
 
 impl Default for SdfCylinder {
@@ -80,8 +82,8 @@ impl Default for SdfCylinder {
             color: Vec4::new(1.0, 1.0, 1.0, 1.0),
             node_a_idx: 0,
             node_b_idx: 0,
-            _padding2: 0,
-            _padding3: 0,
+            wave_phase: -1.0,   // No wave by default
+            wave_amplitude: 0.0,
         }
     }
 }

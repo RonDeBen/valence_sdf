@@ -5,6 +5,9 @@ pub mod node_repulsion;
 
 use bevy::prelude::*;
 
+// Re-export the resource for initialization
+pub use node_interactions::LastTrailLength;
+
 pub mod presets {
     /// Gentle wobbly blobs
     /// Tweak damping (0.85-0.95): higher = slower decay, longer motion
