@@ -67,12 +67,7 @@ pub fn setup_scene(
             scene_material.data.spheres[node_id.index()] = SdfSphere {
                 center,
                 radius: node_radius,
-                base_color: color,
-                target_color: color,
-                infection_progress: 1.0, // Start fully infected (instant color)
-                _padding1: 0.0,
-                _padding2: 0.0,
-                _padding3: 0.0,
+                color,
                 stretch_direction: Vec3::Y,
                 stretch_factor: 1.0,
                 ripple_phase: 0.0,
@@ -90,11 +85,7 @@ pub fn setup_scene(
                     ..default()
                 },
                 NodeVisual {
-                    base_radius: node_radius,
-                    base_color: color,       // Infection: start color
-                    current_color: color,    // Infection: current color
-                    target_color: color,     // Infection: target color
-                    infection_progress: 1.0, // Start fully infected
+                    current_color: color,
                     ..default()
                 },
             ));

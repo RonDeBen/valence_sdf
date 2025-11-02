@@ -7,13 +7,9 @@ struct SdfSphere {
     center: vec3<f32>,
     radius: f32,
 
-    // Infection animation
-    base_color: vec4<f32>,
-    target_color: vec4<f32>,
-    infection_progress: f32,
-    _padding1: f32,
-    _padding2: f32,
-    _padding3: f32,
+    // Display color (pre-computed on CPU)
+    color: vec4<f32>,
+
     stretch_direction: vec3<f32>,
     stretch_factor: f32,
     ripple_phase: f32,
@@ -218,84 +214,6 @@ fn thickness_to_opacity(thickness: f32, density: f32) -> f32 {
     // Opacity = 1 - transmission
     let transmission = exp(-density * thickness);
     return 1.0 - transmission;
-}
-
-/// Get color for a sphere surface point with infection gradient
-fn get_sphere_color(
-    sphere: SdfSphere,
-    surface_point: vec3<f32>,
-    sphere_idx: u32,
-) -> vec4<f32> {
-    // Quick exits
-    if sphere.infection_progress < 0.01 {
-        return sphere.base_color;
-    }
-
-    if sphere.infection_progress > 0.99 {
-        return sphere.target_color;
-    }
-
-    var min_infection_dist = 999.0;
-
-    // Find closest infection point
-    for (var i = 0u; i < data.num_cylinders; i++) {
-        let cyl = data.cylinders[i];
-
-        // Check if this cylinder connects to this sphere
-        var cyl_endpoint: vec3<f32>;
-        var connects = false;
-
-        if cyl.node_a_idx == sphere_idx {
-            cyl_endpoint = cyl.start;
-            connects = true;
-        } else if cyl.node_b_idx == sphere_idx {
-            cyl_endpoint = cyl.end;
-            connects = true;
-        }
-
-        if !connects {
-            continue;
-        }
-
-        // PROJECT the cylinder endpoint onto the sphere surface
-        // This gives us the actual infection point on the sphere
-        let to_endpoint = cyl_endpoint - sphere.center;
-        let contact_point_on_surface = sphere.center + normalize(to_endpoint) * sphere.radius;
-
-        // Now calculate distance along the sphere surface
-        // Using arc length on the sphere: arc = radius * angle
-        let to_contact = normalize(contact_point_on_surface - sphere.center);
-        let to_surface = normalize(surface_point - sphere.center);
-
-        // Angle in radians (acos of dot product)
-        let cos_angle = dot(to_contact, to_surface);
-        let angle = acos(clamp(cos_angle, -1.0, 1.0));
-
-        // Arc length along sphere surface
-        let surface_dist = angle * sphere.radius;
-
-        min_infection_dist = min(min_infection_dist, surface_dist);
-    }
-
-    // Now use ACTUAL surface distance (not angular)
-    // Ease-out cubic for snappy feel
-    let eased_progress = 1.0 - pow(1.0 - sphere.infection_progress, 3.0);
-
-    // Infection spreads across the surface
-    // At progress=0: covers ~0.3 radius worth of surface
-    // At progress=1: covers 2*PI*radius (entire sphere)
-    let max_surface_distance = 3.14159 * sphere.radius;  // Half circumference
-    let infection_reach = 0.2 * sphere.radius + eased_progress * max_surface_distance;
-
-    // Smooth gradient at infection front
-    let gradient_width = 0.3 * sphere.radius;
-    let infection_amount = smoothstep(
-        infection_reach + gradient_width,
-        infection_reach - gradient_width,
-        min_infection_dist
-    );
-
-    return mix(sphere.base_color, sphere.target_color, infection_amount);
 }
 
 /// Raymarch the entire scene
@@ -546,7 +464,7 @@ fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
         let this_intensity = ring_strength * time_decay * sphere.ripple_amplitude * master_intensity;
 
         ripple_intensity += this_intensity;
-        ripple_color += sphere.target_color.rgb * this_intensity;
+        ripple_color += sphere.color.rgb * this_intensity;
     }
 
     // === GRID COLORING ===
@@ -602,7 +520,7 @@ fn fragment(in: VertexOutput) -> FragOut {
 
         if is_sphere {
             let sphere = data.spheres[idx];
-            base_color = get_sphere_color(sphere, hit, u32(idx));
+            base_color = sphere.color;
             glow = sphere.spike_amount;  // Get glow from spike_amount field
         } else {
             let cyl = data.cylinders[idx];
@@ -615,10 +533,8 @@ fn fragment(in: VertexOutput) -> FragOut {
             let sphere_a = data.spheres[cyl.node_a_idx];
             let sphere_b = data.spheres[cyl.node_b_idx];
 
-            // Get animated colors and blend in HSV space
-            let color_a = get_sphere_color(sphere_a, cyl.start, cyl.node_a_idx);
-            let color_b = get_sphere_color(sphere_b, cyl.end, cyl.node_b_idx);
-            let mixed_color = mix_hsv(color_a.rgb, color_b.rgb, t_cyl);
+            // Blend node colors in HSV space for smooth gradient
+            let mixed_color = mix_hsv(sphere_a.color.rgb, sphere_b.color.rgb, t_cyl);
             base_color = vec4(mixed_color, 1.0);
         }
 

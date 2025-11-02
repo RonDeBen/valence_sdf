@@ -5,11 +5,10 @@ use crate::{
     visual::{
         nodes::{GraphNode, valence_to_color, components::NodeVisual},
         physics::NodePhysics,
-        utils::{ease_in_out_cubic, lerp_hsv},
     },
 };
 
-/// System: Update visual animation states (color infection, squeeze, ripple decay)
+/// System: Update visual animation states (color transition, squeeze, ripple decay)
 pub fn update_node_visuals(
     time: Res<Time>,
     session: Res<PuzzleSession>,
@@ -21,27 +20,12 @@ pub fn update_node_visuals(
     for (graph_node, physics, mut visual) in &mut nodes {
         let valence = valences.get(graph_node.node_id);
 
-        // === Color Infection Animation ===
-        let new_target = valence_to_color(valence);
-
-        if (new_target - visual.target_color).length() > 0.1 {
-            visual.base_color = visual.current_color;
-            visual.target_color = new_target;
-            visual.infection_progress = 0.0;
-        }
-
-        if visual.infection_progress < 1.0 {
-            visual.infection_progress += dt * 2.5;
-            visual.infection_progress = visual.infection_progress.min(1.0);
-        }
-
-        // === EASING FUNCTION (try different ones!) ===
-        // Options: ease_in_out_cubic (smooth S-curve), ease_out_cubic (fast start),
-        //          ease_out_quad (gentler), linear (constant speed)
-        let eased_progress = ease_in_out_cubic(visual.infection_progress);
+        // === Smooth Color Transition (Ease-Out) ===
+        let target_color = valence_to_color(valence);
         
-        // Use HSV lerp for smoother color transitions around the color wheel!
-        visual.current_color = lerp_hsv(visual.base_color, visual.target_color, eased_progress);
+        // Fast exponential ease-out: starts very quick, slows near target
+        // Higher value = faster transition (8.0 = ~0.125s, 12.0 = ~0.08s)
+        visual.current_color = visual.current_color.lerp(target_color, dt * 8.0);
 
         // === Glow Decay (rapid fade) ===
         if visual.glow > 0.0 {

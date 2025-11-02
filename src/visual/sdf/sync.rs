@@ -35,10 +35,8 @@ pub fn update_sdf_scene(
         // Update position from physics
         sphere.center = physics.position;
 
-        // Update infection animation data
-        sphere.base_color = visual.base_color;
-        sphere.target_color = visual.target_color;
-        sphere.infection_progress = visual.infection_progress;
+        // Update color (CPU-side color transition)
+        sphere.color = visual.current_color;
 
         // Update visual effects
         sphere.ripple_phase = visual.ripple_phase;

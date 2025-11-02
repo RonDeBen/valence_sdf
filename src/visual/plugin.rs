@@ -64,11 +64,7 @@ fn snap_on_reset(
 
             // Snap color back instantly
             let valence = session.current_valences().get(graph_node.node_id);
-            let color = valence_to_color(valence);
-            visual.base_color = color;
-            visual.target_color = color;
-            visual.current_color = color;
-            visual.infection_progress = 1.0; // Fully "infected" (instant color)
+            visual.current_color = valence_to_color(valence);
         }
         info!("Snapped all nodes back to rest!");
     }
