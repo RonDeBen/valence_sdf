@@ -4,14 +4,13 @@ mod camera;
 mod game;
 mod graph;
 mod input;
-mod sdf_material;
 mod visual;
 
 use camera::CameraPlugin;
 use input::InputPlugin;
-use sdf_material::SdfMaterialPlugin;
+use visual::sdf::material::SdfMaterialPlugin;
 
-use crate::visual::graph::GraphPlugin;
+use crate::visual::plugin::GraphPlugin;
 
 fn main() {
     App::new()

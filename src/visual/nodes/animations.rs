@@ -1,14 +1,15 @@
+use bevy::prelude::*;
+
 use crate::{
     game::session::PuzzleSession,
     visual::{
-        graph::GraphNode,
-        physics::{NodePhysics, NodeVisual},
+        nodes::{GraphNode, valence_to_color, components::NodeVisual},
+        physics::NodePhysics,
         utils::{ease_in_out_cubic, lerp_hsv},
     },
 };
-use bevy::prelude::*;
 
-/// Update visual animation states
+/// System: Update visual animation states (color infection, squeeze, ripple decay)
 pub fn update_node_visuals(
     time: Res<Time>,
     session: Res<PuzzleSession>,
@@ -21,7 +22,7 @@ pub fn update_node_visuals(
         let valence = valences.get(graph_node.node_id);
 
         // === Color Infection Animation ===
-        let new_target = crate::visual::graph::valence_to_color(valence);
+        let new_target = valence_to_color(valence);
 
         if (new_target - visual.target_color).length() > 0.1 {
             visual.base_color = visual.current_color;
@@ -88,3 +89,4 @@ pub fn update_node_visuals(
         }
     }
 }
+

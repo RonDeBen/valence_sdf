@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 
-use crate::visual::{graph::GraphNode, physics::NodePhysics};
+use crate::visual::{nodes::GraphNode, physics::NodePhysics};
 
 /// Debug visualization of physics state
 pub fn debug_physics(nodes: Query<(&GraphNode, &NodePhysics)>, mut gizmos: Gizmos) {

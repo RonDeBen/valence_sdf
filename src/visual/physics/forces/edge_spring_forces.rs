@@ -4,7 +4,7 @@ use crate::{
     game::session::PuzzleSession,
     graph::NodeId,
     visual::{
-        graph::GraphNode,
+        nodes::GraphNode,
         physics::{NodePhysics, PHYSICS},
     },
 };

@@ -14,7 +14,6 @@ struct SdfSphere {
     _padding1: f32,
     _padding2: f32,
     _padding3: f32,
-
     stretch_direction: vec3<f32>,
     stretch_factor: f32,
     ripple_phase: f32,
@@ -33,7 +32,7 @@ struct SdfCylinder {
     // Track which nodes this connects
     node_a_idx: u32,
     node_b_idx: u32,
-    
+
     // Tension wave animation
     wave_phase: f32,      // Where the wave is (0-1), -1 = no wave
     wave_amplitude: f32,  // Strength of squeeze
@@ -53,7 +52,7 @@ var<uniform> data: SdfSceneUniform;
 
 /// SDF for ellipsoid with squash/stretch
 fn sdf_ellipsoid(p: vec3<f32>, center: vec3<f32>, radius: f32,
-                 stretch_dir: vec3<f32>, stretch: f32) -> f32 {
+    stretch_dir: vec3<f32>, stretch: f32) -> f32 {
     let local_p = p - center;
     let compress = 1.0 / sqrt(stretch);
     let parallel = dot(local_p, stretch_dir) * stretch_dir;
@@ -73,9 +72,9 @@ fn sdf_cylinder(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, radius: f32) -> f32 {
 /// SDF for a variable-radius cylinder (rubber band shape) with traveling tension wave
 /// Thick at endpoints, thin in the middle, with optional squeeze wave
 fn sdf_rubber_band(
-    p: vec3<f32>, 
-    a: vec3<f32>, 
-    b: vec3<f32>, 
+    p: vec3<f32>,
+    a: vec3<f32>,
+    b: vec3<f32>,
     base_radius: f32,
     wave_phase: f32,      // Where the wave is (0-1), -1 = no wave
     wave_amplitude: f32   // Strength of squeeze
@@ -89,23 +88,23 @@ fn sdf_rubber_band(
     let min_thickness = 0.66;
     let max_thickness = 2.5;
     let base_thickness = min_thickness + (max_thickness - min_thickness) * center_dist * center_dist;
-    
+
     // === TENSION WAVE EFFECT ===
     var wave_effect = 1.0;
-    
-    if (wave_phase >= 0.0) {  // Wave is active
+
+    if wave_phase >= 0.0 {  // Wave is active
         // Distance from wave position
         let dist_from_wave = abs(h - wave_phase);
-        
+
         // Gaussian squeeze centered at wave position
         let wave_width = 0.15;  // How wide the squeeze is
         let squeeze = exp(-dist_from_wave * dist_from_wave / (wave_width * wave_width));
-        
+
         // Squeeze factor: 1.0 = normal, 0.4 = very squeezed
         let min_squeeze = 0.4;  // How much to squeeze (lower = more squeeze)
         wave_effect = mix(1.0, min_squeeze, squeeze * wave_amplitude);
     }
-    
+
     let thickness_curve = base_thickness * wave_effect;
     let radius = base_radius * thickness_curve;
 
@@ -120,9 +119,9 @@ fn smin(a: f32, b: f32, k: f32) -> f32 {
 
 /// Combined ripple + pop effect - MOBILE OPTIMIZED with gentle bounce
 fn apply_ripple(base_sdf: f32, p: vec3<f32>, center: vec3<f32>,
-                phase: f32, amplitude: f32) -> f32 {
+    phase: f32, amplitude: f32) -> f32 {
     // Shorter duration - about 3.5 seconds total
-    if (amplitude < 0.01 || phase > 10.0) {
+    if amplitude < 0.01 || phase > 10.0 {
         return base_sdf;
     }
 
@@ -166,8 +165,8 @@ fn apply_ripple(base_sdf: f32, p: vec3<f32>, center: vec3<f32>,
 /// Radial pop effect - sphere briefly expands then contracts (ALTERNATIVE VERSION)
 /// To use this: swap the function names (rename apply_ripple → apply_ripple_wave, this → apply_ripple)
 fn apply_ripple_pop(base_sdf: f32, p: vec3<f32>, center: vec3<f32>,
-                    phase: f32, amplitude: f32) -> f32 {
-    if (amplitude < 0.01 || phase > 3.0) {
+    phase: f32, amplitude: f32) -> f32 {
+    if amplitude < 0.01 || phase > 3.0 {
         return base_sdf;
     }
 
@@ -195,7 +194,7 @@ fn raymarch_thickness(ro: vec3<f32>, rd: vec3<f32>, max_thickness: f32) -> f32 {
         let d = sdf_scene(p).x;
 
         // If we've exited (SDF becomes positive), we're done
-        if (d > 0.001) {
+        if d > 0.001 {
             break;
         }
 
@@ -203,7 +202,7 @@ fn raymarch_thickness(ro: vec3<f32>, rd: vec3<f32>, max_thickness: f32) -> f32 {
         thickness = t;
         t += max(abs(d), 0.01);  // Step by the distance (inside = negative)
 
-        if (t > max_thickness) {
+        if t > max_thickness {
             thickness = max_thickness;
             break;
         }
@@ -228,11 +227,11 @@ fn get_sphere_color(
     sphere_idx: u32,
 ) -> vec4<f32> {
     // Quick exits
-    if (sphere.infection_progress < 0.01) {
+    if sphere.infection_progress < 0.01 {
         return sphere.base_color;
     }
 
-    if (sphere.infection_progress > 0.99) {
+    if sphere.infection_progress > 0.99 {
         return sphere.target_color;
     }
 
@@ -246,15 +245,15 @@ fn get_sphere_color(
         var cyl_endpoint: vec3<f32>;
         var connects = false;
 
-        if (cyl.node_a_idx == sphere_idx) {
+        if cyl.node_a_idx == sphere_idx {
             cyl_endpoint = cyl.start;
             connects = true;
-        } else if (cyl.node_b_idx == sphere_idx) {
+        } else if cyl.node_b_idx == sphere_idx {
             cyl_endpoint = cyl.end;
             connects = true;
         }
 
-        if (!connects) {
+        if !connects {
             continue;
         }
 
@@ -309,13 +308,13 @@ fn sdf_scene(p: vec3<f32>) -> vec3<f32> {  // Returns (distance, sphere_idx, is_
     for (var i = 0u; i < data.num_spheres; i++) {
         let sphere = data.spheres[i];
         var d = sdf_ellipsoid(p, sphere.center, sphere.radius,
-                              sphere.stretch_direction, sphere.stretch_factor);
+            sphere.stretch_direction, sphere.stretch_factor);
 
         // Apply ripple
         d = apply_ripple(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
         // d = apply_ripple_pop(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
 
-        if (d < min_dist) {
+        if d < min_dist {
             min_dist = d;
             closest_sphere_idx = f32(i);
             is_sphere = 1.0;
@@ -325,11 +324,11 @@ fn sdf_scene(p: vec3<f32>) -> vec3<f32> {  // Returns (distance, sphere_idx, is_
     // Check all cylinders and blend with spheres
     for (var i = 0u; i < data.num_cylinders; i++) {
         let cyl = data.cylinders[i];
-        
+
         // Preview edges (where node_a_idx == node_b_idx) use regular cylinder
         // Regular edges use rubber band shape
         var d: f32;
-        if (cyl.node_a_idx == cyl.node_b_idx) {
+        if cyl.node_a_idx == cyl.node_b_idx {
             // Preview edge: constant radius (no thick blob at cursor)
             d = sdf_cylinder(p, cyl.start, cyl.end, cyl.radius);
         } else {
@@ -342,7 +341,7 @@ fn sdf_scene(p: vec3<f32>) -> vec3<f32> {  // Returns (distance, sphere_idx, is_
         min_dist = smin(min_dist, d, 0.15);
 
         // If cylinder is now closest, mark it
-        if (d < old_dist - 0.05) {
+        if d < old_dist - 0.05 {
             closest_sphere_idx = f32(i);
             is_sphere = 0.0;  // It's a cylinder
         }
@@ -360,13 +359,13 @@ fn raymarch(ro: vec3<f32>, rd: vec3<f32>) -> vec3<f32> {  // Returns (t, sphere_
         let result = sdf_scene(ro + rd * t);
         let d = result.x;
 
-        if (d < 0.001) {
+        if d < 0.001 {
             sphere_idx = result.y;
             is_sphere = result.z;
             return vec3(t, sphere_idx, is_sphere);
         }
         t += d * 0.9;
-        if (t > 200.0) { break; }
+        if t > 200.0 { break; }
     }
     return vec3(-1.0, sphere_idx, is_sphere);
 }
@@ -374,12 +373,9 @@ fn raymarch(ro: vec3<f32>, rd: vec3<f32>) -> vec3<f32> {  // Returns (t, sphere_
 
 fn normal_at(p: vec3<f32>) -> vec3<f32> {
     let e = 0.001;
-    let dx = sdf_scene(vec3(p.x + e, p.y, p.z)).x
-           - sdf_scene(vec3(p.x - e, p.y, p.z)).x;
-    let dy = sdf_scene(vec3(p.x, p.y + e, p.z)).x
-           - sdf_scene(vec3(p.x, p.y - e, p.z)).x;
-    let dz = sdf_scene(vec3(p.x, p.y, p.z + e)).x
-           - sdf_scene(vec3(p.x, p.y, p.z - e)).x;
+    let dx = sdf_scene(vec3(p.x + e, p.y, p.z)).x - sdf_scene(vec3(p.x - e, p.y, p.z)).x;
+    let dy = sdf_scene(vec3(p.x, p.y + e, p.z)).x - sdf_scene(vec3(p.x, p.y - e, p.z)).x;
+    let dz = sdf_scene(vec3(p.x, p.y, p.z + e)).x - sdf_scene(vec3(p.x, p.y, p.z - e)).x;
     return normalize(vec3(dx, dy, dz));
 }
 
@@ -410,8 +406,8 @@ fn mix_hsv(color_a: vec3<f32>, color_b: vec3<f32>, t: f32) -> vec3<f32> {
     var hue_b = hsv_b.x;
 
     // If hues are more than 180° apart, wrap around
-    if (abs(hue_b - hue_a) > 0.5) {
-        if (hue_a < hue_b) {
+    if abs(hue_b - hue_a) > 0.5 {
+        if hue_a < hue_b {
             hue_a += 1.0;
         } else {
             hue_b += 1.0;
@@ -431,6 +427,143 @@ struct FragOut {
     @builtin(frag_depth) depth: f32,
 }
 
+/// Ease-out cubic: fast start, slow end
+fn ease_out_cubic(t: f32) -> f32 {
+    let x = 1.0 - t;
+    return 1.0 - x * x * x;
+}
+
+/// Apply ripple warping to a position (distorts the space itself)
+fn apply_ripple_warp(p: vec3<f32>) -> vec3<f32> {
+    var warped = p;
+
+    for (var i = 0u; i < data.num_spheres; i++) {
+        let sphere = data.spheres[i];
+
+        if sphere.ripple_phase < 0.01 || sphere.ripple_phase > 8.0 {
+            continue;
+        }
+
+        // === EASED EXPANSION ===
+        let max_radius = 12.0;
+        let duration = 8.0;
+        let normalized_time = clamp(sphere.ripple_phase / duration, 0.0, 1.0);
+        let eased_time = ease_out_cubic(normalized_time);
+        let ring_radius = eased_time * max_radius;
+
+        // Distance from epicenter
+        let to_point_2d = p.xz - sphere.center.xz;
+        let distance = length(to_point_2d);
+
+        // === WAVE DISTORTION ===
+        // Create a traveling wave that warps the grid
+        let ring_width = 1.5;  // Wider influence area
+        let dist_to_ring = abs(distance - ring_radius);
+
+        // Gaussian falloff (smooth wave)
+        let wave_strength = exp(-dist_to_ring * dist_to_ring / (ring_width * ring_width));
+
+        // Time decay
+        let time_decay = exp(-sphere.ripple_phase * 0.6);
+
+        // Calculate warp direction (radial push/pull)
+        let direction = normalize(to_point_2d);
+
+        // === DISTORTION TYPES ===
+
+        // 1. Vertical displacement (ripple pushes grid up/down)
+        let vertical_warp = wave_strength * time_decay * sphere.ripple_amplitude * 0.2;
+        warped.y += vertical_warp;
+
+        // 2. Radial displacement (pushes grid outward from center)
+        let radial_warp = wave_strength * time_decay * sphere.ripple_amplitude * 0.15;
+        warped.x += direction.x * radial_warp;
+        warped.z += direction.y * radial_warp;
+
+        // 3. Twist/rotation (optional - creates swirl effect)
+        // Uncomment for more dramatic warping:
+        // let angle = wave_strength * time_decay * 0.3;
+        // let cos_a = cos(angle);
+        // let sin_a = sin(angle);
+        // let rotated_x = to_point_2d.x * cos_a - to_point_2d.y * sin_a;
+        // let rotated_z = to_point_2d.x * sin_a + to_point_2d.y * cos_a;
+        // warped.x = sphere.center.x + rotated_x;
+        // warped.z = sphere.center.z + rotated_z;
+    }
+
+    return warped;
+}
+
+/// Render warped grid background
+fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
+    // Ripple expansion
+    let max_radius = 8.0;        // How far ripples travel (8-20)
+    let duration = 12.0;           // How long they last (4-12 seconds)
+
+    // Ring appearance
+    let ring_width = 2.0;         // How thick/blurry (0.5-3.0)
+    let decay_rate = 0.6;         // How fast they fade (0.3-1.2)
+
+    // Intensity control
+    let master_intensity = 0.3;   // Overall brightness (0.2-1.0)
+    let color_strength = 0.6;     // How much color bleeds (0.3-1.0)
+    let grid_glow = 0.5;          // How much grid lights up (0.2-1.0)
+
+    // === WARP THE SPACE ===
+    let warped_pos = apply_ripple_warp(world_pos);
+
+    // === GRID PATTERN (sampled at warped position) ===
+    let grid_spacing = 0.5;
+    let grid_x = fract(warped_pos.x / grid_spacing);
+    let grid_z = fract(warped_pos.z / grid_spacing);
+
+    let line_width = 0.03;
+    let is_grid = (grid_x < line_width || grid_x > 1.0 - line_width) || (grid_z < line_width || grid_z > 1.0 - line_width);
+
+    // === CALCULATE RIPPLE INTENSITY ===
+    var ripple_intensity = 0.0;
+    var ripple_color = vec3(0.0);
+
+    for (var i = 0u; i < data.num_spheres; i++) {
+        let sphere = data.spheres[i];
+
+        if sphere.ripple_phase < 0.01 || sphere.ripple_phase > duration {
+            continue;
+        }
+
+        let normalized_time = clamp(sphere.ripple_phase / duration, 0.0, 1.0);
+        let eased_time = ease_out_cubic(normalized_time);
+        let ring_radius = eased_time * max_radius;
+
+        let to_point = world_pos.xz - sphere.center.xz;
+        let distance = length(to_point);
+
+        let dist_to_ring = abs(distance - ring_radius);
+        let ring_strength = exp(-dist_to_ring * dist_to_ring / (ring_width * ring_width));
+
+        let time_decay = exp(-sphere.ripple_phase * decay_rate);
+
+        let this_intensity = ring_strength * time_decay * sphere.ripple_amplitude * master_intensity;
+
+        ripple_intensity += this_intensity;
+        ripple_color += sphere.target_color.rgb * this_intensity;
+    }
+
+    // === GRID COLORING ===
+    let base_color = vec3(0.05, 0.08, 0.12);      // Dark background
+    let grid_base = vec3(0.15, 0.18, 0.22);       // Grid lines
+
+    let grid_with_glow = grid_base + ripple_color * grid_glow;
+    let background_color = select(base_color, grid_with_glow, is_grid);
+    let final_color = background_color + ripple_color * color_strength;
+
+    let base_alpha = select(0.2, 0.5, is_grid);
+    let ripple_alpha = ripple_intensity * 0.6;
+    let alpha = base_alpha + ripple_alpha;
+
+    return vec4(final_color, alpha);
+}
+
 @fragment
 fn fragment(in: VertexOutput) -> FragOut {
     let cam = view.world_position;
@@ -442,7 +575,7 @@ fn fragment(in: VertexOutput) -> FragOut {
     let idx = i32(result.y);
     let is_sphere = result.z > 0.5;
 
-    if (t > 0.0 && idx >= 0) {
+    if t > 0.0 && idx >= 0 {
         let hit = ro + rd * t;
         let n = normal_at(hit);
 
@@ -467,7 +600,7 @@ fn fragment(in: VertexOutput) -> FragOut {
         var position_along_cylinder: f32 = 0.5;
         var glow: f32 = 0.0;  // Track glow intensity (multi-purpose)
 
-        if (is_sphere) {
+        if is_sphere {
             let sphere = data.spheres[idx];
             base_color = get_sphere_color(sphere, hit, u32(idx));
             glow = sphere.spike_amount;  // Get glow from spike_amount field
@@ -491,7 +624,7 @@ fn fragment(in: VertexOutput) -> FragOut {
 
         // === OPACITY ===
         var opacity: f32;
-        if (is_sphere) {
+        if is_sphere {
             opacity = 0.95;  // Nodes mostly solid
         } else {
             // Cylinders: solid at ends, transparent in middle
@@ -509,7 +642,7 @@ fn fragment(in: VertexOutput) -> FragOut {
 
         // === SUBSURFACE GLOW (cylinders only) ===
         var subsurface_glow = vec3(0.0);
-        if (!is_sphere) {
+        if !is_sphere {
             // Middle of cylinder glows when backlit
             let dist_from_center = abs(position_along_cylinder - 0.5) * 2.0;
             let glow_amount = (1.0 - dist_from_center) * 0.5;  // Peaks at center
@@ -531,10 +664,10 @@ fn fragment(in: VertexOutput) -> FragOut {
         let rim_strength = 0.6;
         let rim_glow = clamped_color * fresnel_stepped * rim_strength * distance_fade;
         var with_rim = final_color + rim_glow;
-        
+
         // === GLOW EFFECT (additive emission) ===
         // Add glow AFTER all lighting so it's visible on any color!
-        if (is_sphere && glow > 0.01) {
+        if is_sphere && glow > 0.01 {
             // Additive glow in the node's own color
             let emission = clamped_color * glow * 0.6;
             with_rim = with_rim + emission;  // Don't clamp - let it glow!
@@ -549,6 +682,11 @@ fn fragment(in: VertexOutput) -> FragOut {
         );
     }
 
-    discard;
+    // === WARPED GRID BACKGROUND (Geometry Wars style!) ===
+    // If we didn't hit any nodes/edges, render warped grid
+    let background = render_background_ripples(in.world_position.xyz);
+
+    // Use a far depth value so background is always behind
+    return FragOut(background, 0.9999);
 }
 

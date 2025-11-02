@@ -1,5 +1,5 @@
 use crate::visual::{
-    graph::GraphNode,
+    nodes::GraphNode,
     physics::{NodePhysics, PHYSICS},
 };
 use bevy::prelude::*;

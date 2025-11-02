@@ -3,30 +3,26 @@ use bevy::prelude::*;
 use crate::{
     game::session::PuzzleSession,
     visual::{
-        graph::{GraphNode, FleeMode},
-        physics::{NodePhysics, NodeVisual, PHYSICS},
+        nodes::{GraphNode, components::NodeVisual},
+        physics::NodePhysics,
     },
 };
 
-/// Track the last trail length to detect actual additions (not just session mutations)
-#[derive(Resource, Default)]
-pub struct LastTrailLength(pub usize);
-
-/// Trigger effects when user interacts with nodes
-pub fn trigger_node_interactions(
+/// System: Trigger visual effects when nodes are added to trail (click or drag-through)
+pub fn trigger_trail_effects(
     session: Res<PuzzleSession>,
     mut last_trail_length: Local<usize>,
     mut nodes: Query<(&GraphNode, &mut NodePhysics, &mut NodeVisual)>,
 ) {
     let trail = session.current_trail();
     let current_length = trail.len();
-    
+
     // Only trigger if trail length actually increased (node was ADDED, not just session mutated)
     if current_length <= *last_trail_length {
         *last_trail_length = current_length;
         return;
     }
-    
+
     *last_trail_length = current_length;
 
     // Get the position of the last clicked node
@@ -39,7 +35,7 @@ pub fn trigger_node_interactions(
         None
     };
 
-    let Some(last_pos) = last_node_pos else {
+    let Some(_last_pos) = last_node_pos else {
         return;
     };
 
@@ -56,11 +52,11 @@ pub fn trigger_node_interactions(
 
     for (graph_node, mut physics, mut visual) in &mut nodes {
         if Some(graph_node.node_id) == trail.last().copied() {
-            // === TRIGGER RIPPLE on the clicked node ===
+            // === TRIGGER RIPPLE on the added node ===
             visual.ripple_phase = 0.0;
-            visual.ripple_amplitude = 1.0; // Full strength ripple
-            
-            // === TRIGGER GLOW on the clicked node ===
+            visual.ripple_amplitude = 0.8; // Full strength ripple
+
+            // === TRIGGER GLOW on the added node ===
             visual.glow = 1.0; // Full brightness glow (immediate)
 
             // === RUBBER BAND SNAP: Push node away from the edge ===
@@ -75,12 +71,12 @@ pub fn trigger_node_interactions(
                     physics.apply_impulse(direction * snap_strength);
                 }
             }
-            
+
             continue;
         }
 
-        // Note: The push/impulse effect on invalid nodes has been moved to node_hover_flee
-        // in graph.rs where it applies continuous flee forces while hovering
+        // Note: The push/impulse effect on invalid nodes has been moved to flee.rs
+        // where it applies continuous flee forces while hovering
     }
 }
 
