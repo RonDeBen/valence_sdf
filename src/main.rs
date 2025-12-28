@@ -8,20 +8,46 @@ mod visual;
 
 use camera::CameraPlugin;
 use input::InputPlugin;
+use visual::experiment::ExperimentMaterialPlugin;
 use visual::sdf::material::SdfMaterialPlugin;
 
 use crate::visual::plugin::GraphPlugin;
 
+// 🎨 SCENE SELECTOR - Change this to switch between modes!
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SceneMode {
+    /// The main graph puzzle visualization
+    GraphVisualization,
+    /// Experimental shader playground (hot reloadable)
+    Experiment,
+}
+
+const ACTIVE_SCENE: SceneMode = SceneMode::Experiment;
+
 fn main() {
-    App::new()
-        .add_plugins(DefaultPlugins)
+    let mut app = App::new();
+
+    // Always add these base plugins
+    app.add_plugins(DefaultPlugins)
         .add_plugins(CameraPlugin)
-        .add_plugins(InputPlugin)
-        .add_plugins(SdfMaterialPlugin)
-        .add_plugins(GraphPlugin)
-        .add_systems(Startup, setup_lighting)
-        // .add_systems(Startup, spawn_sdf_screen)  // Temporarily disabled to see grid
-        .run();
+        .add_systems(Startup, setup_lighting);
+
+    // Add scene-specific plugins based on mode
+    match ACTIVE_SCENE {
+        SceneMode::GraphVisualization => {
+            info!("🎮 Starting in Graph Visualization mode");
+            app.add_plugins(InputPlugin)
+                .add_plugins(SdfMaterialPlugin)
+                .add_plugins(GraphPlugin);
+        }
+        SceneMode::Experiment => {
+            info!("🧪 Starting in Experiment mode - Hot reload enabled!");
+            info!("   Edit assets/shaders/experiment.wgsl and save to see changes instantly");
+            app.add_plugins(ExperimentMaterialPlugin);
+        }
+    }
+
+    app.run();
 }
 
 fn setup_lighting(mut commands: Commands) {

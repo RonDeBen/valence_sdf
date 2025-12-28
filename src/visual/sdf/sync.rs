@@ -35,7 +35,6 @@ pub fn update_sdf_scene(
         // Update position from physics
         sphere.center = physics.position;
 
-        // Update color (CPU-side color transition)
         sphere.color = visual.current_color;
 
         // Update visual effects

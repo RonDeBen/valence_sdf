@@ -4,7 +4,6 @@ pub mod components;
 use bevy::prelude::*;
 use crate::graph::NodeId;
 
-// Re-export main types
 pub use animations::update_node_visuals;
 pub use components::NodeVisual;
 

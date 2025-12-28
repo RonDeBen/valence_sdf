@@ -1,0 +1,10 @@
+{
+  "wgsl-analyzer.preprocessor.shaderDefs": [
+    "MATERIAL_BIND_GROUP=2"
+  ],
+  
+  // Keep basic diagnostics but not overly strict
+  "wgsl-analyzer.diagnostics.typeErrors": true,
+  "wgsl-analyzer.diagnostics.nagaParsingErrors": false,
+  "wgsl-analyzer.trace.server": "off"
+}
