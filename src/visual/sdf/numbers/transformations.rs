@@ -52,16 +52,10 @@ impl TransitionSpec {
 
         let mut flows = Vec::new();
 
+        // 1. Handle disappearing segments (these MUST flow somewhere)
         for &from_seg in &from_segs {
-            if to_segs.contains(&from_seg) {
-                // Segment stays active - flow to self
-                flows.push(Flow {
-                    from: from_seg,
-                    to: from_seg,
-                    share: 1.0,
-                });
-            } else {
-                // Segment disappears - distribute to nearest active neighbors
+            if !to_segs.contains(&from_seg) {
+                // Segment disappears - find nearest active neighbor in target
                 let targets_with_dist: Vec<_> = to_segs
                     .iter()
                     .map(|&to_seg| (to_seg, from_seg.distance_to(to_seg)))
@@ -90,83 +84,42 @@ impl TransitionSpec {
             }
         }
 
-        TransitionSpec {
-            from_digit,
-            to_digit,
-            flows,
-        }
-    }
-}
+        // 2. NEW: Create "excitement flows" from stable segments to appearing segments
+        // This makes boring transitions more dynamic
+        let stable_segs: Vec<_> = from_segs
+            .iter()
+            .filter(|&&seg| to_segs.contains(&seg))
+            .copied()
+            .collect();
 
-use rand::Rng;
+        let appearing_segs: Vec<_> = to_segs
+            .iter()
+            .filter(|&&seg| !from_segs.contains(&seg))
+            .copied()
+            .collect();
 
-impl TransitionSpec {
-    pub fn compute_flows_organic(from_digit: Digit, to_digit: Digit, rng: &mut impl Rng) -> Self {
-        let from_segs: Vec<_> = from_digit.active_segments().collect();
-        let to_segs: Vec<_> = to_digit.active_segments().collect();
+        // If there are segments appearing and stable segments exist,
+        // create some "donation flows" for visual interest
+        if !appearing_segs.is_empty() && !stable_segs.is_empty() {
+            for &appearing_seg in &appearing_segs {
+                // Find closest stable segment to donate some mass
+                let mut closest_stable = stable_segs[0];
+                let mut min_dist = closest_stable.distance_to(appearing_seg);
 
-        let mut flows = Vec::new();
+                for &stable_seg in &stable_segs {
+                    let dist = stable_seg.distance_to(appearing_seg);
+                    if dist < min_dist {
+                        min_dist = dist;
+                        closest_stable = stable_seg;
+                    }
+                }
 
-        for &from_seg in &from_segs {
-            if to_segs.contains(&from_seg) {
-                // Mostly stay, but occasionally send a little bit elsewhere
+                // Create a small donation flow (20% of mass)
                 flows.push(Flow {
-                    from: from_seg,
-                    to: from_seg,
-                    share: rng.random_range(0.85..=1.0),
+                    from: closest_stable,
+                    to: appearing_seg,
+                    share: 0.2, // Donate 20% - segment stays mostly intact
                 });
-
-                // Maybe send a tendril elsewhere
-                if rng.random_bool(0.3) {
-                    let other = to_segs[rng.random_range(0..to_segs.len())];
-                    if other != from_seg {
-                        flows.push(Flow {
-                            from: from_seg,
-                            to: other,
-                            share: rng.random_range(0.05..0.15),
-                        });
-                    }
-                }
-            } else {
-                // Segment disappears - weighted random distribution based on distance
-                let targets_with_weights: Vec<_> = to_segs
-                    .iter()
-                    .map(|&to_seg| {
-                        let dist = from_seg.distance_to(to_seg);
-                        let weight = 1.0 / (1.0 + dist as f32).powi(2); // Exponential falloff
-                        (to_seg, weight)
-                    })
-                    .collect();
-
-                let total_weight: f32 = targets_with_weights.iter().map(|(_, w)| w).sum();
-
-                // Pick 1-3 targets weighted by proximity
-                let max_targets = 3.min(to_segs.len());
-                let num_targets = rng.random_range(1..=max_targets);
-                let mut chosen_indices = std::collections::HashSet::new();
-
-                for _ in 0..num_targets {
-                    let mut roll = rng.random_range(0.0..total_weight);
-                    for (i, (_, weight)) in targets_with_weights.iter().enumerate() {
-                        if chosen_indices.contains(&i) {
-                            continue;
-                        }
-                        roll -= weight;
-                        if roll <= 0.0 {
-                            chosen_indices.insert(i);
-                            break;
-                        }
-                    }
-                }
-
-                let share = 1.0 / chosen_indices.len() as f32;
-                for &idx in &chosen_indices {
-                    flows.push(Flow {
-                        from: from_seg,
-                        to: targets_with_weights[idx].0,
-                        share,
-                    });
-                }
             }
         }
 
@@ -317,15 +270,15 @@ mod tests {
                     max_transition = (from_digit, to_digit);
                 }
 
-                println!(
-                    "{:?} -> {:?}: {} flows",
-                    from_digit, to_digit, flow_count
-                );
+                println!("{:?} -> {:?}: {} flows", from_digit, to_digit, flow_count);
             }
         }
 
         println!("\n=== Summary ===");
-        println!("Maximum flows: {} (from {:?} to {:?})", max_flows, max_transition.0, max_transition.1);
+        println!(
+            "Maximum flows: {} (from {:?} to {:?})",
+            max_flows, max_transition.0, max_transition.1
+        );
         println!("Current MAX_FLOWS constant: 32");
         println!("Safety margin: {} unused slots", 32 - max_flows);
 
@@ -333,65 +286,6 @@ mod tests {
         assert!(
             max_flows <= 32,
             "MAX_FLOWS (32) is too small! Need at least {}",
-            max_flows
-        );
-    }
-
-    #[test]
-    fn test_max_flows_organic() {
-        use rand::rngs::StdRng;
-        use rand::SeedableRng;
-
-        let all_digits = [
-            Digit::Zero,
-            Digit::One,
-            Digit::Two,
-            Digit::Three,
-            Digit::Four,
-            Digit::Five,
-            Digit::Six,
-            Digit::Seven,
-            Digit::Eight,
-            Digit::Nine,
-        ];
-
-        let mut max_flows = 0;
-        let mut max_transition = (Digit::Zero, Digit::Zero);
-
-        // Test with a few different seeds to get variety
-        let seeds = [42, 123, 456, 789, 1337];
-
-        println!("\n=== Flow counts for organic transitions (across {} seeds) ===", seeds.len());
-
-        for &seed in &seeds {
-            let mut rng = StdRng::seed_from_u64(seed);
-            
-            for &from_digit in &all_digits {
-                for &to_digit in &all_digits {
-                    let spec = TransitionSpec::compute_flows_organic(from_digit, to_digit, &mut rng);
-                    let flow_count = spec.flows.len();
-
-                    if flow_count > max_flows {
-                        max_flows = flow_count;
-                        max_transition = (from_digit, to_digit);
-                        println!(
-                            "New max! Seed {}: {:?} -> {:?}: {} flows",
-                            seed, from_digit, to_digit, flow_count
-                        );
-                    }
-                }
-            }
-        }
-
-        println!("\n=== Organic Summary ===");
-        println!("Maximum flows: {} (from {:?} to {:?})", max_flows, max_transition.0, max_transition.1);
-        println!("Current MAX_FLOWS constant: 32");
-        println!("Safety margin: {} unused slots", 32 - max_flows);
-
-        // Assert that our MAX_FLOWS constant is sufficient for organic flows too
-        assert!(
-            max_flows <= 32,
-            "MAX_FLOWS (32) is too small for organic! Need at least {}",
             max_flows
         );
     }

@@ -1,7 +1,7 @@
-pub mod digits;
 pub mod edges;
 pub mod material;
 pub mod nodes;
+pub mod numbers;
 pub mod sync;
 
 pub use edges::cylinder::SdfCylinder;

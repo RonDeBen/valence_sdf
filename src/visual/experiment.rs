@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
-use crate::visual::sdf::digits::{Digit, TransitionSpec};
+use crate::visual::sdf::numbers::{Digit, TransitionSpec};
 
 pub struct ExperimentMaterialPlugin;
 
@@ -16,18 +16,17 @@ impl Plugin for ExperimentMaterialPlugin {
     }
 }
 
-/// Single flow instruction for the shader
-#[derive(ShaderType, Debug, Clone, Copy)]
+#[derive(Clone, Copy, Debug, ShaderType)]
+#[repr(C)]
 pub struct ShaderFlow {
     pub from_seg: u32,
     pub to_seg: u32,
     pub share: f32,
-    pub _padding: u32, // Align to 16 bytes
+    pub _padding: u32,
 }
 
-const MAX_FLOWS: usize = 32; // Maximum number of flows (should be enough for any digit transition)
+const MAX_FLOWS: usize = 16;
 
-/// Data passed to the experimental shader (uniform buffer with fixed-size flow array)
 #[derive(ShaderType, Debug, Clone)]
 pub struct ExperimentData {
     pub time: f32,
@@ -35,12 +34,12 @@ pub struct ExperimentData {
     pub to_digit: u32,
     pub transition_progress: f32,
 
-    pub from_digit_mask: u32, // Bitmask of active segments in from_digit
-    pub to_digit_mask: u32,   // Bitmask of active segments in to_digit
-    pub flow_count: u32,      // How many flows are active
-    pub _padding: u32,        // Align to 16 bytes
-    
-    pub flows: [ShaderFlow; MAX_FLOWS], // Fixed-size array of flows
+    pub from_digit_mask: u32,
+    pub to_digit_mask: u32,
+    pub flow_count: u32,
+    pub _padding: u32,
+
+    pub flows: [ShaderFlow; MAX_FLOWS],
 }
 
 impl Default for ExperimentData {
@@ -64,7 +63,6 @@ impl Default for ExperimentData {
     }
 }
 
-/// Material for experimental shader
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
 pub struct ExperimentMaterial {
     #[uniform(0)]
@@ -178,10 +176,8 @@ fn update_experiment_shader(
         let from_digit = digit_timer.current_digit;
         let to_digit = digit_timer.next_digit();
 
-        // Compute the transition spec (flows) in Rust
         let transition_spec = TransitionSpec::compute_flows(from_digit, to_digit);
 
-        // Convert flows to shader format and copy into fixed-size array
         let flow_count = transition_spec.flows.len().min(MAX_FLOWS);
         for (i, flow) in transition_spec.flows.iter().enumerate().take(MAX_FLOWS) {
             material.data.flows[i] = ShaderFlow {
