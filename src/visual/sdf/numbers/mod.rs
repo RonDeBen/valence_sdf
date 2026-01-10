@@ -1,4 +1,7 @@
+pub mod atlas;
 pub mod transformations;
+
+pub use atlas::DigitAtlas;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SegmentId {

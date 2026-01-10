@@ -9,13 +9,12 @@ struct SdfSphere {
 
     // Display color (pre-computed on CPU)
     color: vec4<f32>,
-
     stretch_direction: vec3<f32>,
     stretch_factor: f32,
     ripple_phase: f32,
     ripple_amplitude: f32,
     spike_amount: f32,
-    _padding: f32,
+    digit_value: u32,
 }
 
 struct SdfCylinder {
@@ -45,6 +44,47 @@ struct SdfSceneUniform {
 
 @group(#{MATERIAL_BIND_GROUP}) @binding(0)
 var<uniform> data: SdfSceneUniform;
+
+@group(#{MATERIAL_BIND_GROUP}) @binding(1)
+var digit_atlas: texture_2d<f32>;
+
+@group(#{MATERIAL_BIND_GROUP}) @binding(2)
+var digit_sampler: sampler;
+
+struct DigitUvs {
+    uvs: array<vec4<f32>, 9>,  // [u_min, v_min, u_max, v_max] for each digit
+}
+
+@group(#{MATERIAL_BIND_GROUP}) @binding(3)
+var<uniform> digit_uvs: DigitUvs;
+
+/// Sample a digit from the MSDF atlas
+/// Returns alpha value (0.0 = transparent, 1.0 = opaque)
+fn sample_digit(digit_value: u32, local_uv: vec2<f32>) -> f32 {
+    // Clamp digit value to valid range
+    let digit_idx = min(digit_value, 8u);
+
+    // Get UV bounds for this digit
+    let bounds = digit_uvs.uvs[digit_idx];
+
+    // Map local UV (0-1) to atlas UV
+    let atlas_uv = vec2(
+        mix(bounds.x, bounds.z, local_uv.x),
+        mix(bounds.y, bounds.w, local_uv.y)
+    );
+
+    // Sample MSDF texture
+    let msdf = textureSample(digit_atlas, digit_sampler, atlas_uv);
+
+    // MSDF: take median of RGB channels
+    let median = max(min(msdf.r, msdf.g), min(max(msdf.r, msdf.g), msdf.b));
+
+    // Convert to screen-space distance (pxrange was 4)
+    let screen_px_distance = 4.0 * (median - 0.5);
+
+    // Convert to alpha with antialiasing
+    return clamp(screen_px_distance + 0.5, 0.0, 1.0);
+}
 
 /// SDF for ellipsoid with squash/stretch
 fn sdf_ellipsoid(p: vec3<f32>, center: vec3<f32>, radius: f32,
@@ -541,7 +581,7 @@ fn fragment(in: VertexOutput) -> FragOut {
         // === OPACITY ===
         var opacity: f32;
         if is_sphere {
-            opacity = 0.95;  // Nodes mostly solid
+            opacity = 0.7;  // More transparent so digit inside is visible
         } else {
             // Cylinders: solid at ends, transparent in middle
             let dist_from_center = abs(position_along_cylinder - 0.5) * 2.0;
@@ -554,8 +594,44 @@ fn fragment(in: VertexOutput) -> FragOut {
 
         let gray = dot(base_color.rgb, vec3(0.299, 0.587, 0.114));
         let boosted_color = mix(vec3(gray), base_color.rgb, saturation_boost) * brightness_boost;
-        let clamped_color = clamp(boosted_color, vec3(0.0), vec3(1.0));
+        var clamped_color = clamp(boosted_color, vec3(0.0), vec3(1.0));
 
+        // === RENDER DIGIT (INSIDE SPHERE) ===
+        if is_sphere {
+            let sphere = data.spheres[idx];
+            let to_cam = normalize(cam - sphere.center);
+            let is_top_face = to_cam.y > 0.5;
+
+            if is_top_face {
+                let right = vec3(-1.0, 0.0, 0.0);
+                let up = vec3(0.0, 0.0, -1.0);
+
+                let plane_y = sphere.center.y;
+                let t_to_plane = (plane_y - ro.y) / rd.y;
+                let plane_hit = ro + rd * t_to_plane;
+                
+                let to_plane_hit = plane_hit - sphere.center;
+                let u = dot(to_plane_hit, right) / (sphere.radius * 0.6);
+                let v = dot(to_plane_hit, up) / (sphere.radius * 0.6);
+
+                if abs(u) < 1.0 && abs(v) < 1.0 {
+                    let digit_uv = vec2((u + 1.0) * 0.5, (v + 1.0) * 0.5);
+                    let digit_alpha = sample_digit(sphere.digit_value, digit_uv);
+
+                    if digit_alpha > 0.01 {
+                        // Sharpen the digit edge
+                        let sharp_alpha = smoothstep(0.35, 0.65, digit_alpha);
+                        
+                        // Pure black digit (crispest possible)
+                        let digit_color = vec3(0.0, 0.0, 0.0);
+                        clamped_color = mix(clamped_color, digit_color, sharp_alpha * 0.9);
+                        
+                        // Boost opacity behind digit (frosted backing)
+                        opacity = max(opacity, 0.85);
+                    }
+                }
+            }
+        }
         // === SUBSURFACE GLOW (cylinders only) ===
         var subsurface_glow = vec3(0.0);
         if !is_sphere {

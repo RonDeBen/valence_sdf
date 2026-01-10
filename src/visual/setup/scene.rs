@@ -7,8 +7,9 @@ use crate::{
     visual::{
         nodes::{GraphNode, NodeVisual, valence_to_color},
         physics::NodePhysics,
-        sdf::material::{SceneMaterialHandle, SdfSceneMaterial},
+        sdf::material::{SceneMaterialHandle, SdfSceneMaterial, DigitUvs},
         sdf::nodes::ellipsoid::SdfSphere,
+        sdf::numbers::DigitAtlas,
     },
 };
 
@@ -17,6 +18,7 @@ pub fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<SdfSceneMaterial>>,
+    asset_server: Res<AssetServer>,
     game_camera: Res<GameCamera>,
     session: Res<PuzzleSession>,
 ) {
@@ -43,9 +45,20 @@ pub fn setup_scene(
     let plane_size = grid_region.width().max(grid_region.height()) * 1.5;
     let plane_mesh = meshes.add(Plane3d::default().mesh().size(plane_size, plane_size));
 
+    // Load digit atlas
+    let digit_atlas = DigitAtlas::load(&asset_server);
+    let digit_uvs = DigitUvs {
+        uvs: digit_atlas.to_shader_uvs(),
+    };
+    
     // Initialize the scene material with all spheres
     let mut scene_material = SdfSceneMaterial::default();
     scene_material.data.num_spheres = 9;
+    scene_material.digit_atlas = digit_atlas.texture.clone();
+    scene_material.digit_uvs = digit_uvs;
+    
+    // Store digit atlas as a resource for future reference (if needed)
+    commands.insert_resource(digit_atlas);
 
     let valences = session.current_valences();
 
@@ -73,7 +86,7 @@ pub fn setup_scene(
                 ripple_phase: 0.0,
                 ripple_amplitude: 0.0,
                 spike_amount: 0.0,
-                _padding: 0.0,
+                digit_value: valence as u32,
             };
 
             // Spawn node entity (no mesh, just data)

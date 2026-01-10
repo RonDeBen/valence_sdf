@@ -15,7 +15,7 @@ pub struct SdfSphere {
     pub ripple_phase: f32,
     pub ripple_amplitude: f32,
     pub spike_amount: f32,
-    pub _padding: f32,
+    pub digit_value: u32,
 }
 
 impl Default for SdfSphere {
@@ -29,7 +29,7 @@ impl Default for SdfSphere {
             ripple_phase: 0.0,
             ripple_amplitude: 0.0,
             spike_amount: 0.0,
-            _padding: 0.0,
+            digit_value: 0,
         }
     }
 }

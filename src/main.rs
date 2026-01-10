@@ -22,7 +22,7 @@ enum SceneMode {
     Experiment,
 }
 
-const ACTIVE_SCENE: SceneMode = SceneMode::Experiment;
+const ACTIVE_SCENE: SceneMode = SceneMode::GraphVisualization;
 
 fn main() {
     let mut app = App::new();

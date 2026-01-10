@@ -25,11 +25,45 @@ pub struct SdfSceneUniform {
     pub cylinders: [SdfCylinder; 17],
 }
 
+/// UV coordinates for each digit 0-8 in the atlas
+#[derive(ShaderType, Debug, Clone)]
+pub struct DigitUvs {
+    /// Array of [u_min, v_min, u_max, v_max] for digits 0-8
+    pub uvs: [Vec4; 9],
+}
+
+impl Default for DigitUvs {
+    fn default() -> Self {
+        Self {
+            uvs: [Vec4::ZERO; 9],
+        }
+    }
+}
+
 /// Material for the entire SDF scene
-#[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct SdfSceneMaterial {
     #[uniform(0)]
     pub data: SdfSceneUniform,
+    
+    /// Digit atlas texture (MSDF)
+    #[texture(1)]
+    #[sampler(2)]
+    pub digit_atlas: Handle<Image>,
+    
+    /// UV bounds for each digit (binding 3)
+    #[uniform(3)]
+    pub digit_uvs: DigitUvs,
+}
+
+impl Default for SdfSceneMaterial {
+    fn default() -> Self {
+        Self {
+            data: SdfSceneUniform::default(),
+            digit_atlas: Handle::default(),
+            digit_uvs: DigitUvs::default(),
+        }
+    }
 }
 
 impl Material for SdfSceneMaterial {

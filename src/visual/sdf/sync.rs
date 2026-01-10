@@ -41,6 +41,10 @@ pub fn update_sdf_scene(
         sphere.ripple_phase = visual.ripple_phase;
         sphere.ripple_amplitude = visual.ripple_amplitude;
         sphere.spike_amount = visual.glow; // Repurpose spike_amount for glow effect
+        
+        // Update digit value from current valence
+        let valence = session.current_valences().get(graph_node.node_id);
+        sphere.digit_value = valence as u32;
 
         // Update stretch/squeeze (don't stack them!)
         let speed = physics.velocity.length();
