@@ -573,9 +573,23 @@ fn fragment(in: VertexOutput) -> FragOut {
             let sphere_a = data.spheres[cyl.node_a_idx];
             let sphere_b = data.spheres[cyl.node_b_idx];
 
-            // Blend node colors in HSV space for smooth gradient
-            let mixed_color = mix_hsv(sphere_a.color.rgb, sphere_b.color.rgb, t_cyl);
-            base_color = vec4(mixed_color, 1.0);
+            // === SHARPER GRADIENT WITH POWER CURVE ===
+            // Push colors toward the ends, narrow the middle transition
+            let sharpness = 3.0;  // Higher = sharper (try 2.0-5.0)
+            let sharp_t = pow(t_cyl, sharpness) / (pow(t_cyl, sharpness) + pow(1.0 - t_cyl, sharpness));
+
+            // Blend with the sharpened gradient
+            let strength_a = 1.0 - sharp_t;
+            let strength_b = sharp_t;
+
+            // Use regular RGB mix to preserve node colors
+            let mixed_color = sphere_a.color.rgb * strength_a + sphere_b.color.rgb * strength_b;
+
+            // Thickness brightness (independent of color)
+            let dist_from_center = abs(t_cyl - 0.5) * 2.0;
+            let thickness_brightness = mix(0.6, 1.0, dist_from_center * dist_from_center);
+
+            base_color = vec4(mixed_color * thickness_brightness, 1.0);
         }
 
         // === OPACITY ===
@@ -606,11 +620,34 @@ fn fragment(in: VertexOutput) -> FragOut {
                 let right = vec3(-1.0, 0.0, 0.0);
                 let up = vec3(0.0, 0.0, -1.0);
 
-                let plane_y = sphere.center.y;
+                // === VELOCITY-BASED LAG EFFECT ===
+                // When sphere moves/stretches, digit lags behind
+                let is_moving = sphere.stretch_factor > 1.05;
+                let lag_amount = max(sphere.stretch_factor - 1.0, 0.0) * 0.4;
+
+                // Digit lags opposite to stretch direction (feels suspended)
+                let digit_offset = select(
+                    vec3(0.0),
+                    -sphere.stretch_direction * sphere.radius * lag_amount,
+                    is_moving
+                );
+
+                // Clamp to keep digit inside sphere (max 50% of radius for visibility)
+                let offset_length = length(digit_offset);
+                let max_offset = sphere.radius * 0.5;
+                let clamped_offset = select(
+                    digit_offset,
+                    normalize(digit_offset) * max_offset,
+                    offset_length > max_offset
+                );
+
+                let digit_center = sphere.center + clamped_offset;
+
+                let plane_y = digit_center.y;
                 let t_to_plane = (plane_y - ro.y) / rd.y;
                 let plane_hit = ro + rd * t_to_plane;
-                
-                let to_plane_hit = plane_hit - sphere.center;
+
+                let to_plane_hit = plane_hit - digit_center;
                 let u = dot(to_plane_hit, right) / (sphere.radius * 0.6);
                 let v = dot(to_plane_hit, up) / (sphere.radius * 0.6);
 
@@ -621,13 +658,13 @@ fn fragment(in: VertexOutput) -> FragOut {
                     if digit_alpha > 0.01 {
                         // Sharpen the digit edge
                         let sharp_alpha = smoothstep(0.35, 0.65, digit_alpha);
-                        
+
                         // Pure black digit (crispest possible)
                         let digit_color = vec3(0.0, 0.0, 0.0);
-                        clamped_color = mix(clamped_color, digit_color, sharp_alpha * 0.9);
-                        
+                        clamped_color = mix(clamped_color, digit_color, sharp_alpha * 0.95);
+
                         // Boost opacity behind digit (frosted backing)
-                        opacity = max(opacity, 0.85);
+                        opacity = max(opacity, 0.50);
                     }
                 }
             }
