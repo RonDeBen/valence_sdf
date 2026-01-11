@@ -163,7 +163,7 @@ impl ProgressInfo {
     /// Check if all solutions have been found
     pub fn is_complete(&self) -> bool {
         self.total_solutions
-            .map_or(false, |total| self.solutions_found >= total)
+            .is_some_and(|total| self.solutions_found >= total)
     }
 }
 

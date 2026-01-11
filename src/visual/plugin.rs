@@ -1,4 +1,4 @@
-use crate::game::session::PuzzleSession;
+use crate::game::{puzzle::setup_puzzle_library, session::PuzzleSession};
 use crate::visual::nodes::{GraphNode, NodeVisual, valence_to_color, update_node_visuals};
 use crate::visual::physics::{NodePhysics, simulate_node_physics, apply_edge_spring_forces, apply_node_repulsion};
 use crate::visual::interactions::{
@@ -7,7 +7,7 @@ use crate::visual::interactions::{
     trigger_trail_effects,
 };
 use crate::visual::edges::waves::{EdgeWaves, spawn_edge_waves, update_edge_waves};
-use crate::visual::setup::{setup_puzzle, setup_scene};
+use crate::visual::setup::{check_level_progression, setup_puzzle, setup_scene};
 use crate::visual::sdf::sync::update_sdf_scene;
 use bevy::prelude::*;
 
@@ -19,7 +19,8 @@ impl Plugin for GraphPlugin {
             .init_resource::<HoverState>()
             .init_resource::<EdgeWaves>()
             .init_resource::<FleeMode>()
-            .add_systems(Startup, (setup_puzzle, setup_scene).chain())
+            // Load puzzle library first, then set up initial puzzle
+            .add_systems(Startup, (setup_puzzle_library, setup_puzzle, setup_scene).chain())
             .add_systems(
                 Update,
                 (
@@ -38,6 +39,8 @@ impl Plugin for GraphPlugin {
                     update_edge_waves,
                     update_sdf_scene,
                     snap_on_reset,
+                    // Level progression (check for completion and advance)
+                    check_level_progression,
                 )
                     .chain()
             );
