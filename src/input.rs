@@ -38,8 +38,8 @@ impl PointerEvent {
             .viewport_to_world(camera_transform, self.position)
             .ok()
             .map(|ray| {
-                // Example: intersect y=0 plane (top-down ortho)
-                let t = -ray.origin.y / ray.direction.y;
+                // Example: intersect z=0 plane (top-down ortho)
+                let t = -ray.origin.z / ray.direction.z;
                 ray.origin + ray.direction * t
             })
     }

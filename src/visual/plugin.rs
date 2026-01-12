@@ -2,13 +2,14 @@ use crate::game::{puzzle::setup_puzzle_library, session::PuzzleSession};
 use crate::visual::nodes::{GraphNode, NodeVisual, valence_to_color, update_node_visuals};
 use crate::visual::physics::{NodePhysics, simulate_node_physics, apply_edge_spring_forces, apply_node_repulsion};
 use crate::visual::interactions::{
-    FleeMode, node_hover_flee, snap_back_from_flee,
+    FleeMode, node_hover_flee, snap_back_from_flee, update_flee_target,
     DragState, HoverState, handle_pointer_input,
     trigger_trail_effects,
 };
 use crate::visual::edges::waves::{EdgeWaves, spawn_edge_waves, update_edge_waves};
 use crate::visual::setup::{check_level_progression, setup_puzzle, setup_scene};
 use crate::visual::sdf::sync::update_sdf_scene;
+use crate::visual::ui::{spawn_hud, update_hud, HudTransitionState};
 use bevy::prelude::*;
 
 pub struct GraphPlugin;
@@ -19,8 +20,12 @@ impl Plugin for GraphPlugin {
             .init_resource::<HoverState>()
             .init_resource::<EdgeWaves>()
             .init_resource::<FleeMode>()
-            // Load puzzle library first, then set up initial puzzle
-            .add_systems(Startup, (setup_puzzle_library, setup_puzzle, setup_scene).chain())
+            .init_resource::<HudTransitionState>()
+            // Load puzzle library first, then set up initial puzzle and scene
+            .add_systems(
+                Startup,
+                (setup_puzzle_library, setup_puzzle, setup_scene, spawn_hud).chain(),
+            )
             .add_systems(
                 Update,
                 (
@@ -32,6 +37,7 @@ impl Plugin for GraphPlugin {
                     apply_node_repulsion,
                     apply_edge_spring_forces,
                     simulate_node_physics,
+                    update_flee_target, 
                     node_hover_flee,
                     snap_back_from_flee,
                     // Visual updates
@@ -39,10 +45,12 @@ impl Plugin for GraphPlugin {
                     update_edge_waves,
                     update_sdf_scene,
                     snap_on_reset,
+                    // HUD updates (unified seven-segment display)
+                    update_hud,
                     // Level progression (check for completion and advance)
                     check_level_progression,
                 )
-                    .chain()
+                    .chain(),
             );
     }
 }

@@ -7,13 +7,34 @@ use crate::{
     visual::{
         nodes::{GraphNode, NodeVisual, valence_to_color},
         physics::NodePhysics,
-        sdf::material::{SceneMaterialHandle, SdfSceneMaterial, DigitUvs},
+        sdf::material::{DigitUvs, SceneMaterialHandle, SdfSceneMaterial},
         sdf::nodes::ellipsoid::SdfSphere,
         sdf::numbers::DigitAtlas,
     },
 };
 
-/// System: Setup the unified SDF scene with one large plane
+/// Node radius as a fraction of grid spacing
+const NODE_RADIUS_FRACTION_OF_SPACING: f32 = 0.3;
+
+/// How much larger the SDF plane is than the visible region
+const PLANE_SIZE_SCALE: f32 = 1.5;
+
+/// Extra spacing divisor so nodes don't touch the region edges
+const SPACING_DENOMINATOR_OFFSET: f32 = 1.0;
+
+/// Resource to store scene metrics for physics scaling
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct SceneMetrics {
+    /// Grid spacing (distance between nodes)
+    pub spacing: f32,
+}
+
+impl SceneMetrics {
+    pub fn new(spacing: f32) -> Self {
+        Self { spacing }
+    }
+}
+
 pub fn setup_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -22,18 +43,25 @@ pub fn setup_scene(
     game_camera: Res<GameCamera>,
     session: Res<PuzzleSession>,
 ) {
-    let grid_region = game_camera.bounds.region((0.0, 1.0), (0.0, 0.6), 0.1);
+    let grid_region = game_camera.bounds.region(0.0, 1.0, 0.0, 1.0, 0.0);
 
     let grid_size = 3;
+    let grid_node_count = grid_size * grid_size;
+    let node_id_row_stride = grid_size;
+
     let available_width = grid_region.width();
     let available_height = grid_region.height();
-    let spacing = available_width.min(available_height) / (grid_size as f32 + 1.0);
-    let node_radius = spacing * 0.3;
+
+    let spacing =
+        available_width.min(available_height) / (grid_size as f32 + SPACING_DENOMINATOR_OFFSET);
+    let node_radius = spacing * NODE_RADIUS_FRACTION_OF_SPACING;
 
     let grid_width = (grid_size - 1) as f32 * spacing;
     let grid_height = (grid_size - 1) as f32 * spacing;
+
+    // Center the grid both horizontally and vertically
     let start_x = grid_region.left + (grid_region.width() - grid_width) * 0.5;
-    let start_z = grid_region.bottom + (grid_region.height() - grid_height) * 0.5;
+    let start_y = grid_region.bottom + (grid_region.height() - grid_height) * 0.15;
 
     info!(
         "Scene setup: spacing={}, node_radius={}",
@@ -41,42 +69,39 @@ pub fn setup_scene(
     );
     info!("Grid region: {:?}", grid_region);
 
-    // Create ONE large plane that covers the whole game area
-    let plane_size = grid_region.width().max(grid_region.height()) * 1.5;
+    // Store scene metrics as a resource for physics scaling
+    commands.insert_resource(SceneMetrics::new(spacing));
+
+    let plane_size = grid_region.width().max(grid_region.height()) * PLANE_SIZE_SCALE;
     let plane_mesh = meshes.add(Plane3d::default().mesh().size(plane_size, plane_size));
 
-    // Load digit atlas
     let digit_atlas = DigitAtlas::load(&asset_server);
     let digit_uvs = DigitUvs {
         uvs: digit_atlas.to_shader_uvs(),
     };
-    
-    // Initialize the scene material with all spheres
+
     let mut scene_material = SdfSceneMaterial::default();
-    scene_material.data.num_spheres = 9;
+    scene_material.data.num_spheres = grid_node_count as u32;
     scene_material.digit_atlas = digit_atlas.texture.clone();
     scene_material.digit_uvs = digit_uvs;
-    
-    // Store digit atlas as a resource for future reference (if needed)
+
     commands.insert_resource(digit_atlas);
 
     let valences = session.current_valences();
 
-    // Spawn all node entities (but don't attach individual meshes)
     for row in 0..grid_size {
         for col in 0..grid_size {
-            let node_id = NodeId(row * 3 + col);
+            let node_id = NodeId(row * node_id_row_stride + col);
             let valence = valences.get(node_id);
 
             let center = Vec3::new(
                 start_x + col as f32 * spacing,
-                node_radius,
-                start_z + row as f32 * spacing,
+                start_y + row as f32 * spacing,
+                0.0, // Board is on XY plane at z=0
             );
 
             let color = valence_to_color(valence);
 
-            // Initialize the sphere data in the material
             scene_material.data.spheres[node_id.index()] = SdfSphere {
                 center,
                 radius: node_radius,
@@ -89,14 +114,17 @@ pub fn setup_scene(
                 digit_value: valence as u32,
             };
 
-            // Spawn node entity (no mesh, just data)
+            // Scale spring stiffness by spacing for resolution-independent physics
+            let mut physics = NodePhysics {
+                position: center,
+                rest_position: center,
+                ..default()
+            };
+            physics.spring_stiffness *= spacing;
+
             commands.spawn((
                 GraphNode { node_id },
-                NodePhysics {
-                    position: center,
-                    rest_position: center,
-                    ..default()
-                },
+                physics,
                 NodeVisual {
                     current_color: color,
                     ..default()
@@ -110,17 +138,19 @@ pub fn setup_scene(
         }
     }
 
-    // Create the material and store its handle
     let material_handle = materials.add(scene_material);
     commands.insert_resource(SceneMaterialHandle(material_handle.clone()));
 
-    // Spawn ONE plane with the unified scene material
+    // Center the plane and rotate from XZ to XY
+    let cx = grid_region.width() * 0.5;
+    let cy = grid_region.height() * 0.5;
+
     commands.spawn((
         Mesh3d(plane_mesh),
         MeshMaterial3d(material_handle),
-        Transform::from_xyz(0.0, 0.0, 0.0),
+        Transform::from_xyz(cx, cy, 0.0)
+            .with_rotation(Quat::from_rotation_x(std::f32::consts::FRAC_PI_2)),
     ));
 
     info!("Unified SDF scene created!");
 }
-

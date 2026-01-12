@@ -6,14 +6,19 @@ use crate::{
     visual::{
         nodes::GraphNode,
         physics::{NodePhysics, PHYSICS},
+        setup::SceneMetrics,
     },
 };
 
 /// Spring forces between connected nodes (rubber band effect)
 pub fn apply_edge_spring_forces(
+    scene_metrics: Res<SceneMetrics>,
     session: Res<PuzzleSession>,
     mut nodes: Query<(&GraphNode, &mut NodePhysics)>,
 ) {
+    // 🎯 SCALE FORCES BY SCENE METRICS
+    // Edge spring forces scale with grid spacing for consistency
+    let scale = scene_metrics.spacing;
     let edges = session.edges();
 
     // Collect all node data first to avoid borrow conflicts
@@ -41,14 +46,15 @@ pub fn apply_edge_spring_forces(
         let rest_length = (rest_b - rest_a).length();
         let current_length = (pos_b - pos_a).length();
 
-        if current_length < 0.001 {
+        if current_length < scale * 0.001 {
             continue; // Avoid division by zero
         }
 
         // Spring force: F = k * (current_length - rest_length)
+        // Scale spring constant so forces are consistent across resolutions
         let direction = (pos_b - pos_a) / current_length;
         let extension = current_length - rest_length;
-        let force_magnitude = PHYSICS.edge_spring * extension;
+        let force_magnitude = PHYSICS.edge_spring * scale * extension;
 
         let force = direction * force_magnitude;
 

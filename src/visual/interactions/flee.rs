@@ -7,6 +7,7 @@ use crate::{
         nodes::GraphNode,
         interactions::pointer::HoverState,
         physics::NodePhysics,
+        setup::SceneMetrics,
     },
 };
 
@@ -25,6 +26,11 @@ impl FleeMode {
         self.time_active = 0.0;
     }
 
+    /// Update which node gets dramatic flee (called as cursor moves over invalid nodes)
+    pub fn update_trigger(&mut self, node: NodeId) {
+        self.trigger_node = Some(node);
+    }
+
     pub fn deactivate(&mut self) {
         self.active = false;
         self.trigger_node = None;
@@ -37,6 +43,7 @@ pub fn node_hover_flee(
     hover_state: Res<HoverState>,
     session: Res<PuzzleSession>,
     flee_mode: Res<FleeMode>,
+    scene_metrics: Res<SceneMetrics>,
     mut nodes: Query<(&GraphNode, &mut NodePhysics)>,
 ) {
     // Only apply flee forces when in active flee mode
@@ -52,6 +59,24 @@ pub fn node_hover_flee(
     // Get the list of nodes that should flee
     let flee_nodes: Vec<_> = session.nodes_to_flee();
 
+    // 🎯 SCALE FORCES BY SCENE METRICS
+    // All distances and forces scale with grid spacing so they feel consistent
+    // regardless of screen size or resolution
+    let scale = scene_metrics.spacing;
+    
+    // Scale ranges and forces relative to grid spacing
+    // Dramatic flee affects ~2.67 grid spacings
+    let dramatic_range = scale * 2.67;
+    let dramatic_strength = scale * 8.0;  // Reduced from 20.0
+    let dramatic_min_offset = scale * 0.01;
+    
+    // Ambient flee affects ~1.33 grid spacings  
+    let ambient_range = scale * 1.33;
+    let ambient_strength = scale * 2.0;  // Reduced from 5.0
+    let ambient_min_offset = scale * 0.05;
+    
+    let min_distance = scale * 0.01;
+
     // Apply flee forces
     for (graph_node, mut physics) in &mut nodes {
         if !flee_nodes.contains(&graph_node.node_id) {
@@ -66,19 +91,42 @@ pub fn node_hover_flee(
 
         if is_trigger {
             // === DRAMATIC FLEE: The node they tried to add ===
-            if distance > 0.01 && distance < 3.0 {
+            if distance > min_distance && distance < dramatic_range {
                 let direction = to_node.normalize();
-                let flee_strength = 20.0 / (distance * distance + 0.01);
+                let flee_strength = dramatic_strength / (distance * distance + dramatic_min_offset);
                 physics.apply_force(direction * flee_strength);
             }
         } else {
             // === AMBIENT FLEE: Other invalid nodes ===
-            if distance > 0.01 && distance < 1.5 {
+            if distance > min_distance && distance < ambient_range {
                 let direction = to_node.normalize();
-                let flee_strength = 5.0 / (distance * distance + 0.05);
+                let flee_strength = ambient_strength / (distance * distance + ambient_min_offset);
                 physics.apply_force(direction * flee_strength);
             }
         }
+    }
+}
+
+/// System: Update flee target based on cursor hover (runs every frame during flee)
+pub fn update_flee_target(
+    hover_state: Res<HoverState>,
+    session: Res<PuzzleSession>,
+    mut flee_mode: ResMut<FleeMode>,
+) {
+    // Only update if flee mode is active
+    if !flee_mode.active {
+        return;
+    }
+
+    let Some(hovered_node_id) = hover_state.hovered_node else {
+        return;
+    };
+
+    // Check if the hovered node should flee
+    let flee_nodes = session.nodes_to_flee();
+    if flee_nodes.contains(&hovered_node_id) {
+        // Update dramatic flee target to whatever they're hovering
+        flee_mode.update_trigger(hovered_node_id);
     }
 }
 
@@ -96,8 +144,6 @@ pub fn snap_back_from_flee(
     if !just_deactivated {
         return;
     }
-
-    info!("Flee mode ended - snapping nodes back to rest");
 
     let flee_nodes: Vec<_> = session.nodes_to_flee();
 
@@ -118,14 +164,6 @@ pub fn snap_back_from_flee(
 
                 // Zero out velocity completely to prevent drift
                 physics.velocity = Vec3::ZERO;
-
-                info!(
-                    "Instantly snapped node {} back {:.0}% (distance was: {:.2}, trigger: {})",
-                    graph_node.node_id.0,
-                    snap_ratio * 100.0,
-                    distance,
-                    is_trigger
-                );
             }
         }
     }

@@ -1,12 +1,19 @@
 use crate::visual::{
     nodes::GraphNode,
     physics::{NodePhysics, PHYSICS},
+    setup::SceneMetrics,
 };
 use bevy::prelude::*;
 
-pub fn apply_node_repulsion(mut nodes: Query<(&GraphNode, &mut NodePhysics)>) {
-    let repulsion_strength = PHYSICS.repulsion_strength;
-    let repulsion_range = PHYSICS.repulsion_range;
+pub fn apply_node_repulsion(
+    scene_metrics: Res<SceneMetrics>,
+    mut nodes: Query<(&GraphNode, &mut NodePhysics)>,
+) {
+    // 🎯 SCALE FORCES BY SCENE METRICS
+    // Repulsion forces scale with grid spacing for consistency across resolutions
+    let scale = scene_metrics.spacing;
+    let repulsion_strength = PHYSICS.repulsion_strength * scale;
+    let repulsion_range = PHYSICS.repulsion_range * scale;
 
     // Collect positions first to avoid borrow issues
     let positions: Vec<_> = nodes
@@ -24,7 +31,7 @@ pub fn apply_node_repulsion(mut nodes: Query<(&GraphNode, &mut NodePhysics)>) {
             let diff = physics_a.position - pos_b;
             let distance = diff.length();
 
-            if distance < repulsion_range && distance > 0.01 {
+            if distance < repulsion_range && distance > scale * 0.01 {
                 // Inverse square law, but clamped
                 let force_magnitude = repulsion_strength / (distance * distance);
                 let max_force = repulsion_strength * 10.0; // Cap at 10x base strength

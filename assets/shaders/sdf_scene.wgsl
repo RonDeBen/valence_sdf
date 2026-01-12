@@ -61,7 +61,8 @@ var<uniform> digit_uvs: DigitUvs;
 /// Sample a digit from the MSDF atlas
 /// Returns alpha value (0.0 = transparent, 1.0 = opaque)
 fn sample_digit(digit_value: u32, local_uv: vec2<f32>) -> f32 {
-    // Clamp digit value to valid range
+    // Clamp digit value to valid range (atlas only has 0-8)
+    // Digit 9 will display as 8 until we add it to the atlas
     let digit_idx = min(digit_value, 8u);
 
     // Get UV bounds for this digit
@@ -86,16 +87,49 @@ fn sample_digit(digit_value: u32, local_uv: vec2<f32>) -> f32 {
     return clamp(screen_px_distance + 0.5, 0.0, 1.0);
 }
 
-/// SDF for ellipsoid with squash/stretch
+/// SDF for ellipsoid with subtle asymmetric motion blur (gentle egg when fleeing)
 fn sdf_ellipsoid(p: vec3<f32>, center: vec3<f32>, radius: f32,
     stretch_dir: vec3<f32>, stretch: f32) -> f32 {
     let local_p = p - center;
-    let compress = 1.0 / sqrt(stretch);
-    let parallel = dot(local_p, stretch_dir) * stretch_dir;
-    let perpendicular = local_p - parallel;
-    let deformed = parallel * stretch + perpendicular * compress;
+
+    // Dampen overall effect
+    let stretch_amount = (stretch - 1.0) * 0.5;  // Use 40% of stretch
+
+    // Split into front and back along motion direction
+    let parallel = dot(local_p, stretch_dir);
+    let parallel_vec = parallel * stretch_dir;
+    let perpendicular = local_p - parallel_vec;
+
+    // 🔧 GENTLE ASYMMETRY: subtle egg shape
+    let is_front = parallel > 0.0;  // Ahead of center
+
+    // Front: slightly more compressed (pointy)
+    // Back: barely compressed (rounded)
+    let front_compress = 1.0 - stretch_amount * 0.15;  // 15% compression
+    let back_compress = 1.0 - stretch_amount * 0.05;   // Only 5% compression
+
+    let compress = select(back_compress, front_compress, is_front);
+
+    // Width: very subtle expansion (motion blur feel)
+    let width = 1.0 + stretch_amount * 0.25;  // 25% wider
+
+    let deformed = parallel_vec * compress + perpendicular * width;
+
     return length(deformed) - radius;
 }
+
+// fn sdf_ellipsoid(p: vec3<f32>, center: vec3<f32>, radius: f32,
+//     stretch_dir: vec3<f32>, stretch: f32) -> f32 {
+//     let local_p = p - center;
+//
+//     let compress = 1.0 / sqrt(stretch);
+//     let parallel = dot(local_p, stretch_dir) * stretch_dir;
+//     let perpendicular = local_p - parallel;
+//
+//     let deformed = parallel * compress + perpendicular * stretch;
+//
+//     return length(deformed) - radius;
+// }
 
 /// SDF for a regular cylinder (constant radius)
 fn sdf_cylinder(p: vec3<f32>, a: vec3<f32>, b: vec3<f32>, radius: f32) -> f32 {
@@ -269,7 +303,10 @@ fn sdf_scene(p: vec3<f32>) -> vec3<f32> {  // Returns (distance, sphere_idx, is_
             sphere.stretch_direction, sphere.stretch_factor);
 
         // Apply ripple
-        d = apply_ripple(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
+        if sphere.stretch_factor < 1.01 {
+            d = apply_ripple(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
+        }
+        //d = apply_ripple(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
         // d = apply_ripple_pop(d, p, sphere.center, sphere.ripple_phase, sphere.ripple_amplitude);
 
         if d < min_dist {
@@ -410,7 +447,7 @@ fn apply_ripple_warp(p: vec3<f32>) -> vec3<f32> {
         let ring_radius = eased_time * max_radius;
 
         // Distance from epicenter
-        let to_point_2d = p.xz - sphere.center.xz;
+        let to_point_2d = p.xy - sphere.center.xy;
         let distance = length(to_point_2d);
 
         // === WAVE DISTORTION ===
@@ -436,7 +473,7 @@ fn apply_ripple_warp(p: vec3<f32>) -> vec3<f32> {
         // 2. Radial displacement (pushes grid outward from center)
         let radial_warp = wave_strength * time_decay * sphere.ripple_amplitude * 0.15;
         warped.x += direction.x * radial_warp;
-        warped.z += direction.y * radial_warp;
+        warped.y += direction.y * radial_warp;
 
         // 3. Twist/rotation (optional - creates swirl effect)
         // Uncomment for more dramatic warping:
@@ -444,9 +481,9 @@ fn apply_ripple_warp(p: vec3<f32>) -> vec3<f32> {
         // let cos_a = cos(angle);
         // let sin_a = sin(angle);
         // let rotated_x = to_point_2d.x * cos_a - to_point_2d.y * sin_a;
-        // let rotated_z = to_point_2d.x * sin_a + to_point_2d.y * cos_a;
+        // let rotated_y = to_point_2d.x * sin_a + to_point_2d.y * cos_a;
         // warped.x = sphere.center.x + rotated_x;
-        // warped.z = sphere.center.z + rotated_z;
+        // warped.y = sphere.center.y + rotated_y;
     }
 
     return warped;
@@ -473,10 +510,10 @@ fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
     // === GRID PATTERN (sampled at warped position) ===
     let grid_spacing = 0.5;
     let grid_x = fract(warped_pos.x / grid_spacing);
-    let grid_z = fract(warped_pos.z / grid_spacing);
+    let grid_y = fract(warped_pos.y / grid_spacing);
 
     let line_width = 0.03;
-    let is_grid = (grid_x < line_width || grid_x > 1.0 - line_width) || (grid_z < line_width || grid_z > 1.0 - line_width);
+    let is_grid = (grid_x < line_width || grid_x > 1.0 - line_width) || (grid_y < line_width || grid_y > 1.0 - line_width);
 
     // === CALCULATE RIPPLE INTENSITY ===
     var ripple_intensity = 0.0;
@@ -493,7 +530,7 @@ fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
         let eased_time = ease_out_cubic(normalized_time);
         let ring_radius = eased_time * max_radius;
 
-        let to_point = world_pos.xz - sphere.center.xz;
+        let to_point = world_pos.xy - sphere.center.xy;
         let distance = length(to_point);
 
         let dist_to_ring = abs(distance - ring_radius);
@@ -521,6 +558,7 @@ fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
 
     return vec4(final_color, alpha);
 }
+
 
 @fragment
 fn fragment(in: VertexOutput) -> FragOut {
@@ -592,16 +630,6 @@ fn fragment(in: VertexOutput) -> FragOut {
             base_color = vec4(mixed_color * thickness_brightness, 1.0);
         }
 
-        // === OPACITY ===
-        var opacity: f32;
-        if is_sphere {
-            opacity = 0.7;  // More transparent so digit inside is visible
-        } else {
-            // Cylinders: solid at ends, transparent in middle
-            let dist_from_center = abs(position_along_cylinder - 0.5) * 2.0;
-            opacity = mix(0.5, 0.95, dist_from_center * dist_from_center);
-        }
-
         // === COLOR BOOST ===
         let saturation_boost = 1.6;
         let brightness_boost = 1.4;
@@ -614,16 +642,16 @@ fn fragment(in: VertexOutput) -> FragOut {
         if is_sphere {
             let sphere = data.spheres[idx];
             let to_cam = normalize(cam - sphere.center);
-            let is_top_face = to_cam.y > 0.5;
+            let is_front_face = to_cam.z > 0.5;
 
-            if is_top_face {
-                let right = vec3(-1.0, 0.0, 0.0);
-                let up = vec3(0.0, 0.0, -1.0);
+            if is_front_face {
+                let right = vec3(1.0, 0.0, 0.0);
+                let up = vec3(0.0, 1.0, 0.0);
 
                 // === VELOCITY-BASED LAG EFFECT ===
                 // When sphere moves/stretches, digit lags behind
                 let is_moving = sphere.stretch_factor > 1.05;
-                let lag_amount = max(sphere.stretch_factor - 1.0, 0.0) * 0.4;
+                let lag_amount = max(sphere.stretch_factor - 1.0, 0.0) * 0.7;
 
                 // Digit lags opposite to stretch direction (feels suspended)
                 let digit_offset = select(
@@ -634,7 +662,7 @@ fn fragment(in: VertexOutput) -> FragOut {
 
                 // Clamp to keep digit inside sphere (max 50% of radius for visibility)
                 let offset_length = length(digit_offset);
-                let max_offset = sphere.radius * 0.5;
+                let max_offset = sphere.radius * 0.9;
                 let clamped_offset = select(
                     digit_offset,
                     normalize(digit_offset) * max_offset,
@@ -643,8 +671,8 @@ fn fragment(in: VertexOutput) -> FragOut {
 
                 let digit_center = sphere.center + clamped_offset;
 
-                let plane_y = digit_center.y;
-                let t_to_plane = (plane_y - ro.y) / rd.y;
+                let plane_z = digit_center.z;
+                let t_to_plane = (plane_z - ro.z) / rd.z;
                 let plane_hit = ro + rd * t_to_plane;
 
                 let to_plane_hit = plane_hit - digit_center;
@@ -652,23 +680,45 @@ fn fragment(in: VertexOutput) -> FragOut {
                 let v = dot(to_plane_hit, up) / (sphere.radius * 0.6);
 
                 if abs(u) < 1.0 && abs(v) < 1.0 {
-                    let digit_uv = vec2((u + 1.0) * 0.5, (v + 1.0) * 0.5);
+                    let digit_uv = vec2(
+                        (u + 1.0) * 0.5,
+                        1.0 - (v + 1.0) * 0.5
+                    );
                     let digit_alpha = sample_digit(sphere.digit_value, digit_uv);
 
                     if digit_alpha > 0.01 {
                         // Sharpen the digit edge
                         let sharp_alpha = smoothstep(0.35, 0.65, digit_alpha);
 
-                        // Pure black digit (crispest possible)
+                        // 🔧 SIMPLIFIED: Just blend black digit, high visibility
                         let digit_color = vec3(0.0, 0.0, 0.0);
-                        clamped_color = mix(clamped_color, digit_color, sharp_alpha * 0.95);
+                        clamped_color = mix(clamped_color, digit_color, sharp_alpha * 0.98);
 
-                        // Boost opacity behind digit (frosted backing)
-                        opacity = max(opacity, 0.50);
+                        // 🔧 REMOVED: No opacity manipulation here!
+                        // The opacity is set once below based on stretch
                     }
                 }
             }
         }
+
+        // === OPACITY (SET ONCE, STRETCH-AWARE) ===
+        var opacity: f32;
+        if is_sphere {
+            let sphere = data.spheres[idx];
+
+            // 🔧 Base opacity depends on stretch
+            // When fleeing (stretched), make it more opaque so it stays visible
+            let stretch_amount = sphere.stretch_factor - 1.0;  // 0 = no stretch, 0.2 = 20% stretch
+            let base_opacity = 0.70;  // Normal transparency
+            let stretched_opacity = 0.88;  // More solid when fleeing
+
+            opacity = mix(base_opacity, stretched_opacity, clamp(stretch_amount * 2.5, 0.0, 1.0));
+        } else {
+            // Cylinders: solid at ends, transparent in middle
+            let dist_from_center = abs(position_along_cylinder - 0.5) * 2.0;
+            opacity = mix(0.5, 0.95, dist_from_center * dist_from_center);
+        }
+
         // === SUBSURFACE GLOW (cylinders only) ===
         var subsurface_glow = vec3(0.0);
         if !is_sphere {
@@ -718,4 +768,3 @@ fn fragment(in: VertexOutput) -> FragOut {
     // Use a far depth value so background is always behind
     return FragOut(background, 0.9999);
 }
-

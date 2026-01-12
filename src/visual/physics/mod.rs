@@ -10,12 +10,12 @@ pub mod presets {
     /// Gentle wobbly blobs
     /// Tweak damping (0.85-0.95): higher = slower decay, longer motion
     pub const GENTLE: PhysicsPreset = PhysicsPreset {
-        damping: 0.90,            // Higher = motion lasts longer
-        spring_stiffness: 8.0,    // Gentler pull back to rest
-        push_strength: 0.2,       // Reduced for smoother click response
-        edge_spring: 3.0,         // Softer rubber bands (reduced from 5.0)
-        repulsion_strength: 0.15, // Stronger wave propagation (was 0.05)
-        repulsion_range: 2.0,     // Farther reach (was 1.5)
+        damping: 0.88,            // Slightly more damping (was 0.90)
+        spring_stiffness: 5.0,    // Gentler pull back to rest (was 8.0)
+        push_strength: 0.15,      // Reduced for smoother click response (was 0.2)
+        edge_spring: 2.0,         // Softer rubber bands (was 3.0)
+        repulsion_strength: 0.08, // Gentler wave propagation (was 0.15)
+        repulsion_range: 2.0,     // Farther reach (unchanged)
     };
 
     /// Bouncy energetic movement

@@ -3,8 +3,8 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{AsBindGroup, ShaderType};
 use bevy::shader::ShaderRef;
 
-use crate::visual::sdf::nodes::ellipsoid::SdfSphere;
 use crate::visual::sdf::edges::cylinder::SdfCylinder;
+use crate::visual::sdf::nodes::ellipsoid::SdfSphere;
 
 pub struct SdfMaterialPlugin;
 
@@ -41,29 +41,19 @@ impl Default for DigitUvs {
 }
 
 /// Material for the entire SDF scene
-#[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
+#[derive(Asset, TypePath, AsBindGroup, Debug, Clone, Default)]
 pub struct SdfSceneMaterial {
     #[uniform(0)]
     pub data: SdfSceneUniform,
-    
+
     /// Digit atlas texture (MSDF)
     #[texture(1)]
     #[sampler(2)]
     pub digit_atlas: Handle<Image>,
-    
+
     /// UV bounds for each digit (binding 3)
     #[uniform(3)]
     pub digit_uvs: DigitUvs,
-}
-
-impl Default for SdfSceneMaterial {
-    fn default() -> Self {
-        Self {
-            data: SdfSceneUniform::default(),
-            digit_atlas: Handle::default(),
-            digit_uvs: DigitUvs::default(),
-        }
-    }
 }
 
 impl Material for SdfSceneMaterial {
