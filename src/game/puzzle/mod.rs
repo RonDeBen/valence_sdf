@@ -19,7 +19,6 @@ pub struct PuzzleLibrary {
 #[derive(Debug, Clone)]
 struct BasePuzzle {
     valences: Valences,
-    complexity: usize,
 }
 
 /// Configuration for a single puzzle instance
@@ -69,10 +68,7 @@ impl PuzzleLibrary {
             puzzles_by_complexity
                 .entry(complexity)
                 .or_default()
-                .push(BasePuzzle {
-                    valences,
-                    complexity,
-                });
+                .push(BasePuzzle { valences });
         }
 
         if puzzles_by_complexity.is_empty() {
