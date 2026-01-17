@@ -1,8 +1,3 @@
-//! HUD system using unified seven-segment display rendering.
-//!
-//! Spawns one large plane that renders all HUD elements (digits and slashes)
-//! from an array of HudInstance structs in the shader.
-
 use bevy::prelude::*;
 
 use crate::{
@@ -47,11 +42,6 @@ enum TransitionType {
     LevelAdvance,
     /// Progress changed within same level (animate all changed digits)
     ProgressChange,
-}
-
-/// Configuration for a transition animation
-struct TransitionConfig {
-    ty: TransitionType,
 }
 
 /// Spawn the unified HUD plane
@@ -164,7 +154,6 @@ fn build_current_instances(
     }
     instances
 }
-
 
 /// Apply transition logic to instances based on transition type
 fn apply_transitions(

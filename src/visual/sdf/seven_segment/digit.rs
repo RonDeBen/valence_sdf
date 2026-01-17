@@ -1,68 +1,5 @@
 //! 7-segment digit representation and segment logic.
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum SegmentId {
-    Top = 0,
-    TopRight = 1,
-    BottomRight = 2,
-    Bottom = 3,
-    BottomLeft = 4,
-    TopLeft = 5,
-    Middle = 6,
-}
-
-impl SegmentId {
-    /// Physical neighbors (segments that share an edge)
-    pub(super) const fn neighbors(self) -> &'static [SegmentId] {
-        use SegmentId::*;
-        match self {
-            Top => &[TopRight, TopLeft, Middle],
-            TopRight => &[Top, Middle, BottomRight],
-            BottomRight => &[TopRight, Middle, Bottom],
-            Bottom => &[BottomRight, BottomLeft, Middle],
-            BottomLeft => &[Bottom, Middle, TopLeft],
-            TopLeft => &[Top, Middle, BottomLeft],
-            Middle => &[Top, TopRight, BottomRight, Bottom, BottomLeft, TopLeft],
-        }
-    }
-
-    /// Distance heuristic between segments (0-3, where 0 = same, 1 = adjacent)
-    pub(super) fn distance_to(self, other: SegmentId) -> u8 {
-        if self == other {
-            return 0;
-        }
-        if self.neighbors().contains(&other) {
-            return 1;
-        }
-
-        // BFS for longer paths
-        use std::collections::{HashSet, VecDeque};
-        let mut visited = HashSet::new();
-        let mut queue = VecDeque::new();
-        queue.push_back((self, 0u8));
-        visited.insert(self);
-
-        while let Some((seg, dist)) = queue.pop_front() {
-            if seg == other {
-                return dist;
-            }
-            for &neighbor in seg.neighbors() {
-                if visited.insert(neighbor) {
-                    queue.push_back((neighbor, dist + 1));
-                }
-            }
-        }
-        3 // max distance
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Flow {
-    pub from: SegmentId,
-    pub to: SegmentId,
-    pub share: f32,
-}
-
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Digit {
@@ -117,41 +54,41 @@ impl Digit {
         self as u8
     }
 
-    /// Convert a numeric value to a Digit
-    pub fn from_u8(n: u8) -> Option<Self> {
-        match n {
-            0 => Some(Digit::Zero),
-            1 => Some(Digit::One),
-            2 => Some(Digit::Two),
-            3 => Some(Digit::Three),
-            4 => Some(Digit::Four),
-            5 => Some(Digit::Five),
-            6 => Some(Digit::Six),
-            7 => Some(Digit::Seven),
-            8 => Some(Digit::Eight),
-            9 => Some(Digit::Nine),
-            _ => None,
-        }
-    }
-
-    /// Get an iterator over the active segments for this digit
-    pub fn active_segments(self) -> impl Iterator<Item = SegmentId> {
-        let mask = self.mask();
-        (0u8..7).filter_map(move |i| {
-            if (mask & (1 << i)) != 0 {
-                Some(match i {
-                    0 => SegmentId::Top,
-                    1 => SegmentId::TopRight,
-                    2 => SegmentId::BottomRight,
-                    3 => SegmentId::Bottom,
-                    4 => SegmentId::BottomLeft,
-                    5 => SegmentId::TopLeft,
-                    6 => SegmentId::Middle,
-                    _ => unreachable!(),
-                })
-            } else {
-                None
-            }
-        })
-    }
+    // /// Convert a numeric value to a Digit
+    // pub fn from_u8(n: u8) -> Option<Self> {
+    //     match n {
+    //         0 => Some(Digit::Zero),
+    //         1 => Some(Digit::One),
+    //         2 => Some(Digit::Two),
+    //         3 => Some(Digit::Three),
+    //         4 => Some(Digit::Four),
+    //         5 => Some(Digit::Five),
+    //         6 => Some(Digit::Six),
+    //         7 => Some(Digit::Seven),
+    //         8 => Some(Digit::Eight),
+    //         9 => Some(Digit::Nine),
+    //         _ => None,
+    //     }
+    // }
+    //
+    // /// Get an iterator over the active segments for this digit
+    // pub fn active_segments(self) -> impl Iterator<Item = SegmentId> {
+    //     let mask = self.mask();
+    //     (0u8..7).filter_map(move |i| {
+    //         if (mask & (1 << i)) != 0 {
+    //             Some(match i {
+    //                 0 => SegmentId::Top,
+    //                 1 => SegmentId::TopRight,
+    //                 2 => SegmentId::BottomRight,
+    //                 3 => SegmentId::Bottom,
+    //                 4 => SegmentId::BottomLeft,
+    //                 5 => SegmentId::TopLeft,
+    //                 6 => SegmentId::Middle,
+    //                 _ => unreachable!(),
+    //             })
+    //         } else {
+    //             None
+    //         }
+    //     })
+    // }
 }
