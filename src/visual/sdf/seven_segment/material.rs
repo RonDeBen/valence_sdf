@@ -20,17 +20,6 @@ impl Plugin for SevenSegmentMaterialPlugin {
     }
 }
 
-#[derive(Clone, Copy, Debug, ShaderType)]
-#[repr(C)]
-pub struct ShaderFlow {
-    pub from_seg: u32,
-    pub to_seg: u32,
-    pub share: f32,
-    pub _padding: u32,
-}
-
-const MAX_FLOWS: usize = 16;
-
 /// Maximum number of HUD instances (digits + slashes)
 pub const MAX_HUD_INSTANCES: usize = 12;
 
@@ -63,7 +52,7 @@ impl Default for HudInstance {
             kind: 0,
             mask: 0,
             from_mask: 0,
-            transition_progress: 1.0,  // Default to "transition complete"
+            transition_progress: 1.0, // Default to "transition complete"
             pos: Vec2::ZERO,
             scale: 0.0,
             _pad1: 0,
@@ -80,7 +69,7 @@ pub struct SevenSegmentData {
     pub hud_count: u32,
     pub _padding1: u32,
     pub _padding2: u32,
-    
+
     pub hud: [HudInstance; MAX_HUD_INSTANCES],
 }
 
