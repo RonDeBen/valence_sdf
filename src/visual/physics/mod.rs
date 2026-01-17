@@ -18,26 +18,6 @@ pub mod presets {
         repulsion_range: 2.0,     // Farther reach (unchanged)
     };
 
-    /// Bouncy energetic movement
-    pub const BOUNCY: PhysicsPreset = PhysicsPreset {
-        damping: 0.95,
-        spring_stiffness: 20.0,
-        push_strength: 0.8,
-        edge_spring: 15.0,
-        repulsion_strength: 0.3,
-        repulsion_range: 1.5,
-    };
-
-    /// Sluggish heavy movement
-    pub const SLUGGISH: PhysicsPreset = PhysicsPreset {
-        damping: 0.7,
-        spring_stiffness: 5.0,
-        push_strength: 0.1,
-        edge_spring: 2.0,
-        repulsion_strength: 0.05,
-        repulsion_range: 1.2,
-    };
-
     #[derive(Debug, Clone, Copy)]
     pub struct PhysicsPreset {
         pub damping: f32,
