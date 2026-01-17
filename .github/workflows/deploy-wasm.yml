@@ -35,14 +35,24 @@ jobs:
           ~/.cargo/git/db/
           target/
         key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-wasm-
 
     - name: Install Rust
       uses: dtolnay/rust-toolchain@stable
       with:
         targets: wasm32-unknown-unknown
 
+    - name: Install binaryen (wasm-opt)
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y binaryen
+
     - name: Install wasm-bindgen-cli
-      run: cargo install wasm-bindgen-cli --version 0.2.108
+      run: |
+        if ! command -v wasm-bindgen &> /dev/null; then
+          cargo install wasm-bindgen-cli --version 0.2.108
+        fi
 
     - name: Build WASM
       run: cargo build --target wasm32-unknown-unknown --profile wasm-release
@@ -51,6 +61,25 @@ jobs:
       run: |
         wasm-bindgen --out-dir ./wasm --target web \
           ./target/wasm32-unknown-unknown/wasm-release/valence_sdf.wasm
+
+    - name: Optimize WASM with wasm-opt
+      run: |
+        wasm-opt -Oz \
+          --enable-bulk-memory \
+          --enable-nontrapping-float-to-int \
+          --enable-sign-ext \
+          --enable-mutable-globals \
+          --strip-debug \
+          --strip-producers \
+          ./wasm/valence_sdf_bg.wasm -o ./wasm/valence_sdf_bg.wasm
+
+    - name: Display WASM file sizes
+      run: |
+        echo "📦 WASM bundle size:"
+        ls -lh ./wasm/valence_sdf_bg.wasm
+        echo ""
+        echo "Compressed size (gzip):"
+        gzip -c ./wasm/valence_sdf_bg.wasm | wc -c | awk '{printf "%.2f MB\n", $1/1024/1024}'
 
     - name: Optimize assets
       run: |
@@ -79,4 +108,5 @@ jobs:
         path: './dist'
 
     - name: Deploy to GitHub Pages
+      id: deployment
       uses: actions/deploy-pages@v4
