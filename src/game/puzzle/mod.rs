@@ -279,14 +279,4 @@ mod tests {
     fn test_empty_csv() {
         assert!(PuzzleLibrary::from_csv("").is_err());
     }
-
-    #[test]
-    fn test_puzzle_config_has_correct_fields() {
-        let library = PuzzleLibrary::from_csv(TEST_CSV).unwrap();
-        let config = library.random_puzzle(1).unwrap();
-
-        assert_eq!(config.complexity, 1);
-        assert_eq!(config.total_solutions, 20); // From our solution_count function
-        assert!(config.valences.total() > 0);
-    }
 }

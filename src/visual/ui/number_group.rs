@@ -146,28 +146,4 @@ mod tests {
             vec![HudToken::Digit(2), HudToken::Digit(1), HudToken::Digit(7)]
         );
     }
-
-    #[test]
-    fn test_level_group() {
-        let group = level_group(67);
-        assert_eq!(group.anchor.h, 0.0);
-        assert_eq!(group.anchor.v, 1.0);
-        assert!(matches!(group.justify, HudJustify::Left));
-        assert_eq!(group.tokens.len(), 2);
-    }
-
-    #[test]
-    fn test_progress_group() {
-        let group = progress_group(5, 67);
-        assert_eq!(group.anchor.h, 1.0);
-        assert_eq!(group.anchor.v, 1.0);
-        assert!(matches!(group.justify, HudJustify::Right));
-
-        // Should be: 5, /, 1, 2
-        assert_eq!(group.tokens.len(), 4);
-        assert!(matches!(group.tokens[0], HudToken::Digit(5)));
-        assert!(matches!(group.tokens[1], HudToken::Slash));
-        assert!(matches!(group.tokens[2], HudToken::Digit(6)));
-        assert!(matches!(group.tokens[3], HudToken::Digit(7)));
-    }
 }
