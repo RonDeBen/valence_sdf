@@ -123,9 +123,12 @@ fn setup_camera(mut commands: Commands, game_camera: Res<GameCamera>) {
     ));
 
     info!("📷 Camera setup: XY plane, bottom-left origin (0,0)");
-    info!("   Game bounds: ({:.2}, {:.2}) to ({:.2}, {:.2})",
-        game_camera.bounds.left, game_camera.bounds.bottom,
-        game_camera.bounds.right, game_camera.bounds.top
+    info!(
+        "   Game bounds: ({:.2}, {:.2}) to ({:.2}, {:.2})",
+        game_camera.bounds.left,
+        game_camera.bounds.bottom,
+        game_camera.bounds.right,
+        game_camera.bounds.top
     );
 }
 

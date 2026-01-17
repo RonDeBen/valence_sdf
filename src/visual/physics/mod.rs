@@ -1,4 +1,4 @@
-pub mod debug;
+// pub mod debug;  // Commented out - requires bevy_gizmos feature
 pub mod forces;
 
 use bevy::prelude::*;

@@ -1,0 +1,79 @@
+name: Deploy WASM Demo
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/**'
+      - 'assets/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build-wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+        key: ${{ runner.os }}-cargo-wasm-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: wasm32-unknown-unknown
+
+    - name: Install wasm-bindgen-cli
+      run: cargo install wasm-bindgen-cli --version 0.2.95
+
+    - name: Build WASM
+      run: cargo build --release --target wasm32-unknown-unknown --profile wasm-release
+
+    - name: Generate bindings
+      run: |
+        wasm-bindgen --out-dir ./wasm --target web \
+          ./target/wasm32-unknown-unknown/wasm-release/valence_sdf.wasm
+
+    - name: Optimize assets
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y optipng
+        optipng -o2 assets/fonts/fredoka/fredoka-bold-digits.png
+
+    - name: Prepare deployment
+      run: |
+        mkdir -p dist/assets/fonts/fredoka
+        mkdir -p dist/assets/shaders
+
+        cp wasm/* dist/
+        cp index.html dist/
+        cp assets/fonts/fredoka/fredoka-bold-digits.json dist/assets/fonts/fredoka/
+        cp assets/fonts/fredoka/fredoka-bold-digits.png dist/assets/fonts/fredoka/
+        cp assets/shaders/sdf_scene.wgsl dist/assets/shaders/
+        cp assets/shaders/seven_segment.wgsl dist/assets/shaders/
+
+    - name: Setup Pages
+      uses: actions/configure-pages@v4
+
+    - name: Upload artifact
+      uses: actions/upload-pages-artifact@v3
+      with:
+        path: './dist'
+
+    - name: Deploy to GitHub Pages
+      uses: actions/deploy-pages@v4
