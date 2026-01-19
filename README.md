@@ -2,7 +2,7 @@
 
 A graph-based puzzle game rendered entirely with signed distance fields (SDFs) in custom WGSL shaders.
 
-**[🎮 Play Now](https://rondeben.github.io/valence_sdf/)**
+**[🎮 Play Now](https://valence-sdf.fly.dev/)**
 
 ## About
 

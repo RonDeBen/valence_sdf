@@ -20,8 +20,10 @@ async fn healthz() -> &'static str {
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let static_files =
-        ServeDir::new("../dist").not_found_service(ServeFile::new("../dist/index.html"));
+    let static_dir = std::env::var("STATIC_DIR").unwrap_or_else(|_| "../dist".to_string());
+    let index_path = format!("{}/index.html", static_dir);
+
+    let static_files = ServeDir::new(&static_dir).not_found_service(ServeFile::new(&index_path));
 
     let app = Router::new()
         .route("/healthz", routing::get(healthz))
