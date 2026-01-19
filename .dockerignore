@@ -1,0 +1,13 @@
+fly.toml
+
+**/target
+target
+server/target
+
+dist
+wasm
+
+.git
+.github
+
+.DS_Store
