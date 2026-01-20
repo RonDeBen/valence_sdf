@@ -93,10 +93,10 @@ const SETTLE: SettleConfig = SettleConfig(
 );
 
 // ===== SHADOW CONFIG =====
-const SHADOW_OFFSET: vec2<f32> = vec2(0.09, -0.09);
+const SHADOW_OFFSET: vec2<f32> = vec2<f32>(0.09, -0.09);
 const SHADOW_SOFTNESS: f32 = 0.05;
 const SHADOW_OPACITY: f32 = 0.50;
-const SHADOW_COLOR: vec3<f32> = vec3(0.1, 0.7, 0.7);
+const SHADOW_COLOR: vec3<f32> = vec3<f32>(0.1, 0.7, 0.7);
 
 // ===== CREASE / BEVEL CONFIG =====
 const RIM_WIDTH: f32 = 0.06;        // thickness in SDF units (try 0.03..0.10)
@@ -242,7 +242,7 @@ fn apply_distortion(p: vec2<f32>, time: f32, intensity: f32) -> vec2<f32> {
     let noise_x = sin(p.x * 8.0 + time) * cos(p.y * 6.0 - time * 0.7);
     let noise_y = cos(p.x * 6.0 - time * 0.8) * sin(p.y * 8.0 + time * 0.5);
 
-    let offset = vec2(noise_x, noise_y) * 0.01 * intensity;
+    let offset = vec2<f32>(noise_x, noise_y) * 0.01 * intensity;
     return p + offset;
 }
 
@@ -261,36 +261,36 @@ fn get_segment_geometry(segment_id: u32) -> Segment {
     var seg: Segment;
     switch segment_id {
         case 0u: { // top
-            seg.start = vec2(-seg_width + inline_gap, seg_length + corner_gap);
-            seg.end = vec2(seg_width - inline_gap, seg_length + corner_gap);
+            seg.start = vec2<f32>(-seg_width + inline_gap, seg_length + corner_gap);
+            seg.end = vec2<f32>(seg_width - inline_gap, seg_length + corner_gap);
         }
         case 1u: { // top-right
-            seg.start = vec2(seg_width, seg_length - corner_gap);
-            seg.end = vec2(seg_width, corner_gap);
+            seg.start = vec2<f32>(seg_width, seg_length - corner_gap);
+            seg.end = vec2<f32>(seg_width, corner_gap);
         }
         case 2u: { // bottom-right
-            seg.start = vec2(seg_width, -corner_gap);
-            seg.end = vec2(seg_width, -seg_length + corner_gap);
+            seg.start = vec2<f32>(seg_width, -corner_gap);
+            seg.end = vec2<f32>(seg_width, -seg_length + corner_gap);
         }
         case 3u: { // bottom
-            seg.start = vec2(seg_width - inline_gap, -seg_length - corner_gap);
-            seg.end = vec2(-seg_width + inline_gap, -seg_length - corner_gap);
+            seg.start = vec2<f32>(seg_width - inline_gap, -seg_length - corner_gap);
+            seg.end = vec2<f32>(-seg_width + inline_gap, -seg_length - corner_gap);
         }
         case 4u: { // bottom-left
-            seg.start = vec2(-seg_width, -seg_length + corner_gap);
-            seg.end = vec2(-seg_width, -corner_gap);
+            seg.start = vec2<f32>(-seg_width, -seg_length + corner_gap);
+            seg.end = vec2<f32>(-seg_width, -corner_gap);
         }
         case 5u: { // top-left
-            seg.start = vec2(-seg_width, corner_gap);
-            seg.end = vec2(-seg_width, seg_length - corner_gap);
+            seg.start = vec2<f32>(-seg_width, corner_gap);
+            seg.end = vec2<f32>(-seg_width, seg_length - corner_gap);
         }
         case 6u: { // middle
-            seg.start = vec2(-seg_width + inline_gap, 0.0);
-            seg.end = vec2(seg_width - inline_gap, 0.0);
+            seg.start = vec2<f32>(-seg_width + inline_gap, 0.0);
+            seg.end = vec2<f32>(seg_width - inline_gap, 0.0);
         }
         default: {
-            seg.start = vec2(0.0, 0.0);
-            seg.end = vec2(0.0, 0.0);
+            seg.start = vec2<f32>(0.0, 0.0);
+            seg.end = vec2<f32>(0.0, 0.0);
         }
     }
     return seg;
@@ -595,7 +595,7 @@ fn render_anticipation_phase(
                 // shrink + wobble
                 let shrink = 0.3 - (phase_progress * 0.2);
 
-                let wobble = vec2(
+                let wobble = vec2<f32>(
                     sin(data.time * 5.0 + f32(seg_id)),
                     cos(data.time * 4.0 + f32(seg_id))
                 ) * 0.02 * phase_progress;
@@ -752,8 +752,8 @@ fn sd_capsule_2d(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, r: f32) -> f32 {
 }
 
 fn render_slash(p: vec2<f32>) -> f32 {
-    let a = vec2(-0.4, -0.6);
-    let b = vec2(0.4, 0.6);
+    let a = vec2<f32>(-0.4, -0.6);
+    let b = vec2<f32>(0.4, 0.6);
     let r = 0.12;
     return sd_capsule_2d(p, a, b, r);
 }
@@ -793,7 +793,7 @@ struct FragOut {
 @fragment
 fn fragment(in: VertexOutput) -> FragOut {
     let world_pos = in.world_position.xyz;
-    let p = vec2(world_pos.x, world_pos.y);
+    let p = vec2<f32>(world_pos.x, world_pos.y);
 
     // Compute min distances for FG + shadow (single pass over instances)
     var min_d = 1e9;
@@ -828,11 +828,11 @@ fn fragment(in: VertexOutput) -> FragOut {
     let d0 = scene_sdf(p);
 
     let eps = 0.003;
-    let dx = scene_sdf(p + vec2(eps, 0.0)) - scene_sdf(p - vec2(eps, 0.0));
-    let dy = scene_sdf(p + vec2(0.0, eps)) - scene_sdf(p - vec2(0.0, eps));
-    let n = normalize(vec2(dx, dy) + vec2(1e-6, 1e-6));
+    let dx = scene_sdf(p + vec2<f32>(eps, 0.0)) - scene_sdf(p - vec2<f32>(eps, 0.0));
+    let dy = scene_sdf(p + vec2<f32>(0.0, eps)) - scene_sdf(p - vec2<f32>(0.0, eps));
+    let n = normalize(vec2<f32>(dx, dy) + vec2<f32>(1e-6, 1e-6));
 
-    let light_dir = normalize(vec2(-1.0, 1.0));
+    let light_dir = normalize(vec2<f32>(-1.0, 1.0));
     let ndl = clamp(dot(n, light_dir), 0.0, 1.0);
 
     let inside = smoothstep(0.0, 0.06, -d0);
@@ -853,17 +853,17 @@ fn fragment(in: VertexOutput) -> FragOut {
     let shadow_a = shadow_a_raw * SHADOW_OPACITY * (1.0 - fg_a);
 
     // Composite
-    var out_rgb = vec3(0.05, 0.05, 0.1);
+    var out_rgb = vec3<f32>(0.05, 0.05, 0.1);
     var out_a = 0.0;
 
     out_rgb = mix(out_rgb, SHADOW_COLOR, shadow_a);
     out_a = max(out_a, shadow_a);
 
-    var fg_rgb = vec3(1.0) * mix(1.0, lit, inside);
+    var fg_rgb = vec3<f32>(1.0) * mix(1.0, lit, inside);
 
     // Apply bevel: brighten on highlight rim, darken on shadow rim
-    fg_rgb += vec3(1.0) * (HIGHLIGHT_STRENGTH * h);
-    fg_rgb -= vec3(1.0) * (SHADOW_STRENGTH * s);
+    fg_rgb += vec3<f32>(1.0) * (HIGHLIGHT_STRENGTH * h);
+    fg_rgb -= vec3<f32>(1.0) * (SHADOW_STRENGTH * s);
 
     out_rgb = mix(out_rgb, fg_rgb, fg_a);
     out_a = max(out_a, fg_a);
@@ -872,8 +872,8 @@ fn fragment(in: VertexOutput) -> FragOut {
         let clip = view.clip_from_world * vec4<f32>(world_pos, 1.0);
         let depth = clip.z / clip.w;
 
-        return FragOut(vec4(out_rgb, out_a), depth);
+        return FragOut(vec4<f32>(out_rgb, out_a), depth);
     }
 
-    return FragOut(vec4(0.0), 0.9999);
+    return FragOut(vec4<f32>(0.0), 0.9999);
 }

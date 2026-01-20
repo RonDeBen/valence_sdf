@@ -196,7 +196,7 @@ fn apply_distortion(p: vec2<f32>, time: f32, intensity: f32) -> vec2<f32> {
     let noise_x = sin(p.x * 8.0 + time) * cos(p.y * 6.0 - time * 0.7);
     let noise_y = cos(p.x * 6.0 - time * 0.8) * sin(p.y * 8.0 + time * 0.5);
 
-    let offset = vec2(noise_x, noise_y) * 0.01 * intensity;
+    let offset = vec2<f32>(noise_x, noise_y) * 0.01 * intensity;
     return p + offset;
 }
 
@@ -215,36 +215,36 @@ fn get_segment_geometry(segment_id: u32) -> Segment {
     var seg: Segment;
     switch segment_id {
         case 0u: { // top
-            seg.start = vec2(-seg_width + inline_gap, seg_length + corner_gap);
-            seg.end = vec2(seg_width - inline_gap, seg_length + corner_gap);
+            seg.start = vec2<f32>(-seg_width + inline_gap, seg_length + corner_gap);
+            seg.end = vec2<f32>(seg_width - inline_gap, seg_length + corner_gap);
         }
         case 1u: { // top-right
-            seg.start = vec2(seg_width, seg_length - corner_gap);
-            seg.end = vec2(seg_width, corner_gap);
+            seg.start = vec2<f32>(seg_width, seg_length - corner_gap);
+            seg.end = vec2<f32>(seg_width, corner_gap);
         }
         case 2u: { // bottom-right
-            seg.start = vec2(seg_width, -corner_gap);
-            seg.end = vec2(seg_width, -seg_length + corner_gap);
+            seg.start = vec2<f32>(seg_width, -corner_gap);
+            seg.end = vec2<f32>(seg_width, -seg_length + corner_gap);
         }
         case 3u: { // bottom
-            seg.start = vec2(seg_width - inline_gap, -seg_length - corner_gap);
-            seg.end = vec2(-seg_width + inline_gap, -seg_length - corner_gap);
+            seg.start = vec2<f32>(seg_width - inline_gap, -seg_length - corner_gap);
+            seg.end = vec2<f32>(-seg_width + inline_gap, -seg_length - corner_gap);
         }
         case 4u: { // bottom-left
-            seg.start = vec2(-seg_width, -seg_length + corner_gap);
-            seg.end = vec2(-seg_width, -corner_gap);
+            seg.start = vec2<f32>(-seg_width, -seg_length + corner_gap);
+            seg.end = vec2<f32>(-seg_width, -corner_gap);
         }
         case 5u: { // top-left
-            seg.start = vec2(-seg_width, corner_gap);
-            seg.end = vec2(-seg_width, seg_length - corner_gap);
+            seg.start = vec2<f32>(-seg_width, corner_gap);
+            seg.end = vec2<f32>(-seg_width, seg_length - corner_gap);
         }
         case 6u: { // middle
-            seg.start = vec2(-seg_width + inline_gap, 0.0);
-            seg.end = vec2(seg_width - inline_gap, 0.0);
+            seg.start = vec2<f32>(-seg_width + inline_gap, 0.0);
+            seg.end = vec2<f32>(seg_width - inline_gap, 0.0);
         }
         default: {
-            seg.start = vec2(0.0, 0.0);
-            seg.end = vec2(0.0, 0.0);
+            seg.start = vec2<f32>(0.0, 0.0);
+            seg.end = vec2<f32>(0.0, 0.0);
         }
     }
     return seg;
@@ -417,7 +417,7 @@ fn render_anticipation_phase(
                 let shrink = 0.3 - (phase_progress * 0.2);
 
                 // Add tiny wobble to the position
-                let wobble = vec2(
+                let wobble = vec2<f32>(
                     sin(data.time * 5.0 + f32(seg_id)),
                     cos(data.time * 4.0 + f32(seg_id))
                 ) * 0.02 * phase_progress;
@@ -583,7 +583,7 @@ struct FragOut {
 @fragment
 fn fragment(in: VertexOutput) -> FragOut {
     let world_pos = in.world_position.xyz;
-    let p = vec2(-world_pos.x, world_pos.z);
+    let p = vec2<f32>(-world_pos.x, world_pos.z);
     let p_scaled = p / 1.2;
 
     // USE DATA FROM RUST (instead of hardcoded 0x7F)
@@ -599,8 +599,8 @@ fn fragment(in: VertexOutput) -> FragOut {
     if edge > 0.01 {
         let clip = view.clip_from_world * vec4<f32>(world_pos, 1.0);
         let depth = clip.z / clip.w;
-        return FragOut(vec4(1.0, 0.0, 0.0, edge), depth);
+        return FragOut(vec4<f32>(1.0, 0.0, 0.0, edge), depth);
     }
 
-    return FragOut(vec4(0.05, 0.05, 0.1, 0.0), 0.9999);
+    return FragOut(vec4<f32>(0.05, 0.05, 0.1, 0.0), 0.9999);
 }

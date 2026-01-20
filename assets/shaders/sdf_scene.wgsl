@@ -69,7 +69,7 @@ fn sample_digit(digit_value: u32, local_uv: vec2<f32>) -> f32 {
     let bounds = digit_uvs.uvs[digit_idx];
 
     // Map local UV (0-1) to atlas UV
-    let atlas_uv = vec2(
+    let atlas_uv = vec2<f32>(
         mix(bounds.x, bounds.z, local_uv.x),
         mix(bounds.y, bounds.w, local_uv.y)
     );
@@ -342,7 +342,7 @@ fn sdf_scene(p: vec3<f32>) -> vec3<f32> {  // Returns (distance, sphere_idx, is_
         }
     }
 
-    return vec3(min_dist, closest_sphere_idx, is_sphere);
+    return vec3<f32>(min_dist, closest_sphere_idx, is_sphere);
 }
 
 fn raymarch(ro: vec3<f32>, rd: vec3<f32>) -> vec3<f32> {  // Returns (t, sphere_idx, is_sphere)
@@ -357,38 +357,38 @@ fn raymarch(ro: vec3<f32>, rd: vec3<f32>) -> vec3<f32> {  // Returns (t, sphere_
         if d < 0.001 {
             sphere_idx = result.y;
             is_sphere = result.z;
-            return vec3(t, sphere_idx, is_sphere);
+            return vec3<f32>(t, sphere_idx, is_sphere);
         }
         t += d * 0.9;
         if t > 200.0 { break; }
     }
-    return vec3(-1.0, sphere_idx, is_sphere);
+    return vec3<f32>(-1.0, sphere_idx, is_sphere);
 }
 
 
 fn normal_at(p: vec3<f32>) -> vec3<f32> {
     let e = 0.001;
-    let dx = sdf_scene(vec3(p.x + e, p.y, p.z)).x - sdf_scene(vec3(p.x - e, p.y, p.z)).x;
-    let dy = sdf_scene(vec3(p.x, p.y + e, p.z)).x - sdf_scene(vec3(p.x, p.y - e, p.z)).x;
-    let dz = sdf_scene(vec3(p.x, p.y, p.z + e)).x - sdf_scene(vec3(p.x, p.y, p.z - e)).x;
-    return normalize(vec3(dx, dy, dz));
+    let dx = sdf_scene(vec3<f32>(p.x + e, p.y, p.z)).x - sdf_scene(vec3<f32>(p.x - e, p.y, p.z)).x;
+    let dy = sdf_scene(vec3<f32>(p.x, p.y + e, p.z)).x - sdf_scene(vec3<f32>(p.x, p.y - e, p.z)).x;
+    let dz = sdf_scene(vec3<f32>(p.x, p.y, p.z + e)).x - sdf_scene(vec3<f32>(p.x, p.y, p.z - e)).x;
+    return normalize(vec3<f32>(dx, dy, dz));
 }
 
 /// Convert RGB to HSV for color wheel blending
 fn rgb_to_hsv(c: vec3<f32>) -> vec3<f32> {
-    let K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    let p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
-    let q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+    let K = vec4<f32>(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+    let p = mix(vec4<f32>(c.bg, K.wz), vec4<f32>(c.gb, K.xy), step(c.b, c.g));
+    let q = mix(vec4<f32>(p.xyw, c.r), vec4<f32>(c.r, p.yzx), step(p.x, c.r));
     let d = q.x - min(q.w, q.y);
     let e = 1.0e-10;
-    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+    return vec3<f32>(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
 }
 
 /// Convert HSV back to RGB
 fn hsv_to_rgb(c: vec3<f32>) -> vec3<f32> {
-    let K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
+    let K = vec4<f32>(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
     let p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, vec3(0.0), vec3(1.0)), c.y);
+    return c.z * mix(K.xxx, clamp(p - K.xxx, vec3<f32>(0.0), vec3<f32>(1.0)), c.y);
 }
 
 /// Mix two colors in HSV space (takes shortest path around color wheel)
@@ -414,7 +414,7 @@ fn mix_hsv(color_a: vec3<f32>, color_b: vec3<f32>, t: f32) -> vec3<f32> {
     let mixed_sat = mix(hsv_a.y, hsv_b.y, t);
     let mixed_val = mix(hsv_a.z, hsv_b.z, t);
 
-    return hsv_to_rgb(vec3(mixed_hue, mixed_sat, mixed_val));
+    return hsv_to_rgb(vec3<f32>(mixed_hue, mixed_sat, mixed_val));
 }
 
 struct FragOut {
@@ -517,7 +517,7 @@ fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
 
     // === CALCULATE RIPPLE INTENSITY ===
     var ripple_intensity = 0.0;
-    var ripple_color = vec3(0.0);
+    var ripple_color = vec3<f32>(0.0);
 
     for (var i = 0u; i < data.num_spheres; i++) {
         let sphere = data.spheres[i];
@@ -545,8 +545,8 @@ fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
     }
 
     // === GRID COLORING ===
-    let base_color = vec3(0.05, 0.08, 0.12);      // Dark background
-    let grid_base = vec3(0.15, 0.18, 0.22);       // Grid lines
+    let base_color = vec3<f32>(0.05, 0.08, 0.12);      // Dark background
+    let grid_base = vec3<f32>(0.15, 0.18, 0.22);       // Grid lines
 
     let grid_with_glow = grid_base + ripple_color * grid_glow;
     let background_color = select(base_color, grid_with_glow, is_grid);
@@ -556,7 +556,7 @@ fn render_background_ripples(world_pos: vec3<f32>) -> vec4<f32> {
     let ripple_alpha = ripple_intensity * 0.6;
     let alpha = base_alpha + ripple_alpha;
 
-    return vec4(final_color, alpha);
+    return vec4<f32>(final_color, alpha);
 }
 
 
@@ -576,7 +576,7 @@ fn fragment(in: VertexOutput) -> FragOut {
         let n = normal_at(hit);
 
         // === LIGHTING ===
-        let light_dir = normalize(vec3(1.0, 1.0, 1.0));
+        let light_dir = normalize(vec3<f32>(1.0, 1.0, 1.0));
         let view_dir = normalize(cam - hit);
 
         // Cel-shaded diffuse
@@ -627,16 +627,16 @@ fn fragment(in: VertexOutput) -> FragOut {
             let dist_from_center = abs(t_cyl - 0.5) * 2.0;
             let thickness_brightness = mix(0.6, 1.0, dist_from_center * dist_from_center);
 
-            base_color = vec4(mixed_color * thickness_brightness, 1.0);
+            base_color = vec4<f32>(mixed_color * thickness_brightness, 1.0);
         }
 
         // === COLOR BOOST ===
         let saturation_boost = 1.6;
         let brightness_boost = 1.4;
 
-        let gray = dot(base_color.rgb, vec3(0.299, 0.587, 0.114));
-        let boosted_color = mix(vec3(gray), base_color.rgb, saturation_boost) * brightness_boost;
-        var clamped_color = clamp(boosted_color, vec3(0.0), vec3(1.0));
+        let gray = dot(base_color.rgb, vec3<f32>(0.299, 0.587, 0.114));
+        let boosted_color = mix(vec3<f32>(gray), base_color.rgb, saturation_boost) * brightness_boost;
+        var clamped_color = clamp(boosted_color, vec3<f32>(0.0), vec3<f32>(1.0));
 
         // === RENDER DIGIT (INSIDE SPHERE) ===
         if is_sphere {
@@ -645,8 +645,8 @@ fn fragment(in: VertexOutput) -> FragOut {
             let is_front_face = to_cam.z > 0.5;
 
             if is_front_face {
-                let right = vec3(1.0, 0.0, 0.0);
-                let up = vec3(0.0, 1.0, 0.0);
+                let right = vec3<f32>(1.0, 0.0, 0.0);
+                let up = vec3<f32>(0.0, 1.0, 0.0);
 
                 // === VELOCITY-BASED LAG EFFECT ===
                 // When sphere moves/stretches, digit lags behind
@@ -655,7 +655,7 @@ fn fragment(in: VertexOutput) -> FragOut {
 
                 // Digit lags opposite to stretch direction (feels suspended)
                 let digit_offset = select(
-                    vec3(0.0),
+                    vec3<f32>(0.0),
                     -sphere.stretch_direction * sphere.radius * lag_amount,
                     is_moving
                 );
@@ -680,7 +680,7 @@ fn fragment(in: VertexOutput) -> FragOut {
                 let v = dot(to_plane_hit, up) / (sphere.radius * 0.6);
 
                 if abs(u) < 1.0 && abs(v) < 1.0 {
-                    let digit_uv = vec2(
+                    let digit_uv = vec2<f32>(
                         (u + 1.0) * 0.5,
                         1.0 - (v + 1.0) * 0.5
                     );
@@ -691,7 +691,7 @@ fn fragment(in: VertexOutput) -> FragOut {
                         let sharp_alpha = smoothstep(0.35, 0.65, digit_alpha);
 
                         // 🔧 SIMPLIFIED: Just blend black digit, high visibility
-                        let digit_color = vec3(0.0, 0.0, 0.0);
+                        let digit_color = vec3<f32>(0.0, 0.0, 0.0);
                         clamped_color = mix(clamped_color, digit_color, sharp_alpha * 0.98);
 
                         // 🔧 REMOVED: No opacity manipulation here!
@@ -720,7 +720,7 @@ fn fragment(in: VertexOutput) -> FragOut {
         }
 
         // === SUBSURFACE GLOW (cylinders only) ===
-        var subsurface_glow = vec3(0.0);
+        var subsurface_glow = vec3<f32>(0.0);
         if !is_sphere {
             // Middle of cylinder glows when backlit
             let dist_from_center = abs(position_along_cylinder - 0.5) * 2.0;
@@ -756,7 +756,7 @@ fn fragment(in: VertexOutput) -> FragOut {
         let depth = clip.z / clip.w;
 
         return FragOut(
-            vec4(with_rim, opacity),
+            vec4<f32>(with_rim, opacity),
             depth
         );
     }
